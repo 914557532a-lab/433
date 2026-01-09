@@ -1,0 +1,208 @@
+C51 COMPILER V9.01   CMT2300_DRV                                                           07/23/2024 14:43:12 PAGE 1   
+
+
+C51 COMPILER V9.01, COMPILATION OF MODULE CMT2300_DRV
+OBJECT MODULE PLACED IN .\FileOutput\CMT2300_DRV.obj
+COMPILER INVOKED BY: D:\software\keil\C51\BIN\C51.EXE CMT2300A\CMT2300_DRV.C LARGE OMF2 OPTIMIZE(8,SPEED) BROWSE INCDIR(
+                    -.\ConfigFile;.\CMT2300A) DEBUG PRINT(.\FileOutput\CMT2300_DRV.lst) TABS(2) OBJECT(.\FileOutput\CMT2300_DRV.obj)
+
+line level    source
+
+   1          //-----------------------------------------------------------------------------
+   2          //
+   3          //-----------------------------------------------------------------------------
+   4          #include <intrins.h>
+   5          #include "ca51f_config.h"
+   6          #include "ca51f2sfr.h"
+   7          #include "ca51f2xsfr.h"
+   8          #include "gpiodef_f2.h"
+   9          #include "system.h"
+  10          
+  11          //-----------------------------------------------------------------------------
+  12          #include "CMT2300_DRV.H"
+  13          
+  14          //* *************************************************************************
+  15          void Cmt2300A_Delay_us(unsigned int Loop)
+  16          { do{
+  17   2          unsigned int n = 10;
+  18   2          while(n--);
+  19   2        }while(Loop--);
+  20   1      }
+  21          
+  22          //* *************************************************************************
+  23          void cmt_SPI_send(unsigned char Data)
+  24          { unsigned char i;
+  25   1        cmt_sdio_Pin_out;//保证 数据口为输出
+  26   1        for(i=0; i<8; i++)
+  27   1          { if((Data & 0x80) !=0)
+  28   2              { cmt_sdio_Pin_1;   }
+  29   2              else            
+  30   2          { cmt_sdio_Pin_0;   }
+  31   2      
+  32   2              Data <<= 1;
+  33   2              Cmt2300A_Delay_us(1);
+  34   2              cmt_sclk_Pin_1;//Send bit on the rising edge of SCLK
+  35   2          Cmt2300A_Delay_us(1);
+  36   2              cmt_sclk_Pin_0;
+  37   2        }
+  38   1      }
+  39          
+  40          unsigned char cmt_SPI_recv(void)
+  41          {unsigned char i; unsigned char Data;
+  42   1        cmt_sdio_Pin_in;//防止硬件冲突
+  43   1        for(i=0; i<8; i++)
+  44   1        { Cmt2300A_Delay_us(1);
+  45   2          cmt_sclk_Pin_1;//Read bit on the rising edge of SCLK 
+  46   2          Data <<= 1;
+  47   2          if((cmt_sdio_Pin_read) != 0)
+  48   2          { Data |= 0x01; }
+  49   2              else
+  50   2          { Data &= 0xFE; }
+  51   2      
+  52   2              Cmt2300A_Delay_us(1);
+  53   2          cmt_sclk_Pin_0;
+  54   2          }
+C51 COMPILER V9.01   CMT2300_DRV                                                           07/23/2024 14:43:12 PAGE 2   
+
+  55   1          return (Data);
+  56   1      }
+  57          //* *************************************************************************
+  58          //* @name    CMT2300A_WriteReg
+  59          //* @desc    Write the CMT2300A register at the specified address.
+  60          //* @param   addr: register address
+  61          //*          dat: register value
+  62          //* *************************************************************************
+  63          void CMT2300A_WriteReg(unsigned char addr, unsigned char dat)
+  64          { cmt_fcsb_Pin_1;
+  65   1          cmt_csb_Pin_0;//选中访问寄存器
+  66   1      //--------------------------------
+  67   1        Cmt2300A_Delay_us(2);//> 1 SCLK cycle
+  68   1      
+  69   1          cmt_SPI_send(addr&0x7F);// r/w = 0
+  70   1          cmt_SPI_send(dat);
+  71   1      
+  72   1        Cmt2300A_Delay_us(2);//> 1 SCLK cycle
+  73   1      
+  74   1          cmt_csb_Pin_1;//关闭访问寄存器
+  75   1      }
+  76          //* *************************************************************************
+  77          //* @name    CMT2300A_ReadReg
+  78          //* @desc    Read the CMT2300A register at the specified address.
+  79          //* @param   addr: register address
+  80          //* @return  Register value
+  81          //* *************************************************************************
+  82          unsigned char CMT2300A_ReadReg(unsigned char addr)
+  83          {unsigned char Reg_dat;
+  84   1      //--------------------------------
+  85   1        cmt_fcsb_Pin_1;
+  86   1        cmt_csb_Pin_0;//选中访问寄存器
+  87   1      //--------------------------------
+  88   1        Cmt2300A_Delay_us(2);//> 1 SCLK cycle
+  89   1      
+  90   1          cmt_SPI_send(addr|0x80);//r/w = 1
+  91   1          Reg_dat = cmt_SPI_recv();
+  92   1      
+  93   1        Cmt2300A_Delay_us(2);//> 1 SCLK cycle
+  94   1      
+  95   1          cmt_csb_Pin_1;//关闭访问寄存器
+  96   1        return (Reg_dat);
+  97   1      }
+  98          //* *************************************************************************
+  99          //* @name    CMT2300A_WriteFifo
+ 100          //* @desc    Writes the buffer contents to the CMT2300A FIFO.
+ 101          //* @param   buf: buffer containing data to be put on the FIFO
+ 102          //*          len: number of bytes to be written to the FIFO
+ 103          //* *************************************************************************
+ 104          void CMT2300A_WriteFifo(const unsigned char * p_buf, unsigned int len)
+ 105          { unsigned int i;
+ 106   1      //--------------------------------
+ 107   1          cmt_fcsb_Pin_1;
+ 108   1          cmt_csb_Pin_1;
+ 109   1      //--------------------------------
+ 110   1          for(i=0; i<len; i++)
+ 111   1          { cmt_fcsb_Pin_0;//开始访问 FIFO
+ 112   2              Cmt2300A_Delay_us(2);//> 1 SCLK cycle
+ 113   2      
+ 114   2              cmt_SPI_send(p_buf[i]);
+ 115   2              Cmt2300A_Delay_us(4);//> 2 us
+ 116   2      
+C51 COMPILER V9.01   CMT2300_DRV                                                           07/23/2024 14:43:12 PAGE 3   
+
+ 117   2              cmt_fcsb_Pin_1;//关闭 FIFO 访问
+ 118   2              Cmt2300A_Delay_us(6);//> 4 us
+ 119   2          }
+ 120   1      }
+ 121          //* *************************************************************************
+ 122          //* @name    CMT2300A_ReadFifo
+ 123          //* @desc    Reads the contents of the CMT2300A FIFO.
+ 124          //* @param   buf: buffer where to copy the FIFO read data
+ 125          //*          len: number of bytes to be read from the FIFO
+ 126          //* *************************************************************************
+ 127          void CMT2300A_ReadFifo(unsigned char * p_buf, unsigned int len)
+ 128          { unsigned int i;
+ 129   1      //--------------------------------
+ 130   1          cmt_fcsb_Pin_1;
+ 131   1          cmt_csb_Pin_1;
+ 132   1      //--------------------------------
+ 133   1          for(i=0; i<len; i++)
+ 134   1          { cmt_fcsb_Pin_0;//开始访问 FIFO
+ 135   2              Cmt2300A_Delay_us(2);//> 1 SCLK cycle
+ 136   2      
+ 137   2              p_buf[i] = cmt_SPI_recv();
+ 138   2              Cmt2300A_Delay_us(4);//> 2 us
+ 139   2      
+ 140   2              cmt_fcsb_Pin_1;//关闭 FIFO 访问
+ 141   2              Cmt2300A_Delay_us(6);//> 4 us
+ 142   2          }
+ 143   1      }
+ 144          
+ 145          /*! ********************************************************
+ 146          * @name    CMT2300A_InitGpio
+ 147          * @desc    Initializes the CMT2300A interface GPIOs.
+ 148          * *********************************************************/
+ 149          void CMT2300A_InitGpio(void)
+ 150          {
+ 151   1      //--------------------------------------------------------------
+ 152   1        // PxM1.n   PxM2.n    I/O 类型
+ 153   1        //   0        0     准双向
+ 154   1        //   0        1     推挽输出
+ 155   1        //   1        0     输入 (高阻)
+ 156   1        //   1        1     开漏
+ 157   1      //--------------------------------------------------------------
+ 158   1        cmt_sclk_Pin_0;// SCLK has an internal pull-down resistor
+ 159   1        cmt_sclk_Init;//cmt_sclk_Pin = P00
+ 160   1      
+ 161   1          cmt_sdio_Pin_1;
+ 162   1        cmt_sdio_Init;//cmt_sdio_Pin = P10
+ 163   1      
+ 164   1        cmt_csb_Pin_1;// CSB has an internal pull-up resistor
+ 165   1        cmt_csb_Init;//cmt_csb_Pin = P11
+ 166   1      
+ 167   1        cmt_fcsb_Pin_1;// FCSB has an internal pull-up resistor
+ 168   1        cmt_fcsb_Init;//cmt_fcsb_Pin = P12
+ 169   1      
+ 170   1        cmt_GPIO_Init;//SetGpio3In = P01
+ 171   1      
+ 172   1          Cmt2300A_Delay_us(10);
+ 173   1      }
+ 174          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    456    ----
+C51 COMPILER V9.01   CMT2300_DRV                                                           07/23/2024 14:43:12 PAGE 4   
+
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----      16
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

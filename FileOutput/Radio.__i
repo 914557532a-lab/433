@@ -1,0 +1,1 @@
+"CMT2300A\Radio.C" LARGE OMF2 OPTIMIZE (8,SPEED) BROWSE INCDIR(.\ConfigFile;.\CMT2300A) DEBUG PRINT(.\FileOutput\Radio.lst) TABS (2) OBJECT(.\FileOutput\Radio.obj)

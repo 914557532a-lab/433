@@ -1,0 +1,449 @@
+C51 COMPILER V9.01   UART_2_ISR_                                                           07/23/2024 14:43:11 PAGE 1   
+
+
+C51 COMPILER V9.01, COMPILATION OF MODULE UART_2_ISR_
+OBJECT MODULE PLACED IN .\FileOutput\UART_2_ISR .obj
+COMPILER INVOKED BY: D:\software\keil\C51\BIN\C51.EXE SourceFile\UART_2_ISR .C LARGE OMF2 OPTIMIZE(8,SPEED) BROWSE INCDI
+                    -R(.\ConfigFile;.\CMT2300A) DEBUG PRINT(.\FileOutput\UART_2_ISR .lst) TABS(2) OBJECT(.\FileOutput\UART_2_ISR .obj)
+
+line level    source
+
+   1          //-----------------------------------------------------------------------------
+   2          //串口发送程序
+   3          //-----------------------------------------------------------------------------
+   4          #include <intrins.h>
+   5          #include "ca51f_config.h"
+   6          #include "ca51f2sfr.h"
+   7          #include "ca51f2xsfr.h"
+   8          #include "gpiodef_f2.h"
+   9          #include "system.h"
+  10          
+  11          #include "flash.h"
+  12          
+  13          #include "KeyEvent.H"
+  14          #include "UART2_ISR.h"
+  15          #include "HP_03N_DRV.H"
+  16          #include "DisplayUpdata.H"
+  17          
+  18          //==================================================================================
+  19          //说明：列举所需的 RAM 资源
+  20          
+  21          //功能============长度=============说明====================
+  22          //起始字符     1字节 0x76   (旋钮下发的数据起始字符为 0x78  )
+  23          //长度       1字节 22(1字节   1 -- 250)
+  24          //运行状态     1字节 0x05(关机)，0xA0(开机)
+  25          //实测环境温度   1字节 -40 - 50度
+  26          //设定控制温度   1字节 8 -- 35度
+  27          //油泵起始频率   1字节 0.8Hz -- 2.5Hz
+  28          //油泵终止频率   1字节 3Hz --   8Hz
+  29          //启动转速值   2字节 1450RPM -- 2600RPM
+  30          //最大转速值   2字节 3000RPM -- 5000RPM
+  31          //工作电压选择   1字节 12V / 24V
+  32          //风扇磁极个数   1字节 1 - 2
+  33          //控温方式选择   1字节 0x32 =自动控温，0xCD = 手动控温
+  34          //控制温度下限   1字节 跟随面板数据(默认为  8度)
+  35          //控制温度上限   1字节 跟随面板数据(默认为 35度)
+  36          //油量告警值   1字节 1 - 5%
+  37          //手动泵油开关   1字节 0x00 = 关闭手动泵油， 0x5A开启手动泵油
+  38          //壳体温度保护值 2字节 200 -- 300摄氏度，最低过热保护值200度，最高300度
+  39          //海拔高度     2字节 0 -- 6000米， 数据从手机里的传感器上获得
+  40          
+  41          
+  42          //功能============长度=============说明====================
+  43          //起始字符     1字节 0x76 (统一返回这个值)
+  44          //长度       1字节 22(1字节   1 -- 250)
+  45          //运行状态     1字节 0 = 关机，1-7代表的工作状态
+  46          //告警状态     1字节 0 =没有告警，1 -8 代表的告警
+  47          //供电电压     2字节 0 -- 36.5V 电压
+  48          //电机转速     2字节 0 -- 5000转，电机转速
+  49          //电机电压     2字节 0 -- 18.5V 电机电压
+  50          //机器壳体温度   2字节 -40 -- +300摄氏度
+  51          //点火塞电压   2字节 点火塞电压18.2V
+  52          //点火塞电流   2字节 0A --10.05A
+  53          //当前泵油频率   1字节 0.8Hz -- 8Hz
+  54          //历史故障码   1字节 1 - 8
+C51 COMPILER V9.01   UART_2_ISR_                                                           07/23/2024 14:43:11 PAGE 2   
+
+  55          //使用次数     1字节 0 - 100
+  56          //设定泵油频率   1字节 0.8Hz -- 8Hz
+  57          //剩余油量     1字节 0-100 %
+  58          //保留       1字节 
+  59          //==================================================================================
+  60          xdata unsigned char UART2_SendHoldTime;
+  61          
+  62          xdata unsigned char ReceiveIndex;
+  63          xdata unsigned char ReceiveCount;
+  64          
+  65          xdata unsigned char UART2_OverTime;//接收超时
+  66          xdata unsigned char TakeRunStateTime;
+  67          
+  68          xdata unsigned char UART_ERROR_Time;
+  69          //---------------------------------------------------------
+  70          xdata unsigned char UART2_TxCount;//发送次数计数
+  71          //---------------------------------------------------------
+  72          xdata unsigned char UART_2_RXD[RXD_LENGTH];
+  73          xdata unsigned char UART_2_TXD[TXD_LENGTH];
+  74          xdata union{
+  75            unsigned char StateData;
+  76            struct {
+  77              unsigned char BIT_1:1;//接收完成
+  78              unsigned char BIT_2:1;//发送命令
+  79              ////////
+  80              unsigned char BIT_3:1;// 发送完成
+  81            }BIT;
+  82          }UART_2;
+  83          //==================================================================================
+  84          xdata union{//Array[1]=MSB,Array[0]=LSB, STM8的编译器中 Array[0]=MSB,Array[1]=LSB
+  85              unsigned char CRC_Array[2];
+  86              unsigned int CRC_REG;//CRC值
+  87           }CRC_DATA;//----存储CRC 计算结果
+  88          //==================================================================================
+  89          //ANSI CRC-16的生成多项式为：x16 + x15 + x2 + 1 , 先传输 LSB 方式
+  90          void CRC16_CHECK(unsigned char *Message, unsigned int Length)
+  91          {unsigned int LoopCount;unsigned char ShiftCount, CarryFlag;
+  92   1      //--------------------------------------------------------------
+  93   1          CRC_DATA.CRC_REG = 0xFFFF;//CRC 初值
+  94   1      //--------------------------------------------------------------
+  95   1          for(LoopCount=0x00;LoopCount<Length;LoopCount++)
+  96   1          {   CRC_DATA.CRC_Array[1] = (CRC_DATA.CRC_Array[1]^*Message);
+  97   2              for(ShiftCount=0x00;ShiftCount<0x08;ShiftCount++)
+  98   2              {   CarryFlag = (CRC_DATA.CRC_Array[1] & 0x01);
+  99   3                  CRC_DATA.CRC_REG >>= 0x01;//CRC值右移一位
+ 100   3                  if(CarryFlag == 0x01)//进位为1 与多项式值 异或
+ 101   3                  {   CRC_DATA.CRC_REG = (CRC_DATA.CRC_REG ^ 0xA001);
+ 102   4                  }
+ 103   3              }
+ 104   2              Message++;//下一地址
+ 105   2          }//不同编译器下，需注意union 结构高字节，低字节存储方式
+ 106   1      }
+ 107          //-----------------------------------------------------------------------------
+ 108          void Uart2_Initial(unsigned long BaudRate)
+ 109          {union{
+ 110   1        unsigned char Array[2];
+ 111   1        unsigned int Data;
+ 112   1       }Baud;
+ 113   1       unsigned char Count;
+ 114   1        //-------------------------------------------------
+ 115   1        for(Count=0x00;Count<RXD_LENGTH;Count++)
+ 116   1        { UART_2_RXD[Count] = 0x00; }//初始化接收缓冲区
+C51 COMPILER V9.01   UART_2_ISR_                                                           07/23/2024 14:43:11 PAGE 3   
+
+ 117   1        for(Count=0x00;Count<TXD_LENGTH;Count++)
+ 118   1        { UART_2_TXD[Count] = 0x00; }//初始化发送缓冲区
+ 119   1        //-------------------------------------------------
+ 120   1        GPIO_Init(P60F,P60_UART2_RX_SETTING |PU_EN);
+ 121   1        GPIO_Init(P61F,P61_UART2_TX_SETTING);
+ 122   1      //  P60C &= 0x9F;//关闭施密特触发功能，提高低电平输入门限电压至 0.5 *VDD //上拉电阻选择为弱上拉
+ 123   1      //  P60C &= 0xDF;//上拉电阻选择为弱上拉
+ 124   1      //  P60C &= 0xEF;//下拉电阻选择为弱下拉
+ 125   1      
+ 126   1        //-------------------------------------------------
+ 127   1        Baud.Data = 0x400 - FOSC/(BaudRate*32);
+ 128   1        S2RELH   =  Baud.Array[0];
+ 129   1        S2RELL   =  Baud.Array[1];
+ 130   1        S2CON = 0xD0;
+ 131   1        INT3EN = 1;
+ 132   1        //-------------------------------------------------
+ 133   1        ReceiveIndex = 0x00;
+ 134   1        UART2_OverTime = 0x00;//接收超时
+ 135   1        UART_2.StateData = 0x00;//初始化为未收到数据
+ 136   1        UART2_SendHoldTime = 10;//保持25mS
+ 137   1        //-------------------------------------------------
+ 138   1        TakeRunStateTime = 0x00;
+ 139   1      }
+ 140          
+ 141          //-----------------------------------------------------------------------------
+ 142          void UART2_ISR (void) interrupt 8
+ 143          {unsigned char ReceiveData;
+ 144   1        if((S2CON & 0x01) !=0x00)//接收中断
+ 145   1        { S2CON = (S2CON &0xFE) |0x01;//清除中断标志
+ 146   2          ReceiveData = S2BUF;//读取串口数据
+ 147   2        //-------------------------------------------------------------
+ 148   2          UART2_OverTime = 12;//30mS超时时间
+ 149   2          if(UART_2.BIT.BIT_1 == EQUAL_H){ return; }//未处理完，丢弃后来数据，防止覆盖
+ 150   2          UART_2_RXD[ReceiveIndex] = ReceiveData;//存储数据
+ 151   2        //-------------------------------------------------------------
+ 152   2          switch(ReceiveIndex)
+ 153   2          {case 0x00://起始字符
+ 154   3              if((ReceiveData == 0x6A)//主板ID
+ 155   3               ||(ReceiveData == 0xFF))//管理地址，全部接收
+ 156   3              { ReceiveIndex++;   }//正确则继续
+ 157   3            break;
+ 158   3           case 0x01://长度
+ 159   3              ReceiveCount = ReceiveData;//接收数据长度
+ 160   3              ReceiveIndex++;//开始正式接收，数据体
+ 161   3            break;
+ 162   3           default:///数据体
+ 163   3              ReceiveIndex++;//开始正式接收，数据体
+ 164   3            //-------------------------------------------------
+ 165   3              if(--ReceiveCount < 0x01)
+ 166   3              { ReceiveIndex = 0x00;//接收成功等待下一次
+ 167   4                UART_2.BIT.BIT_1 = EQUAL_H;//一次接收成功
+ 168   4              }//长度不为零，则一直接收
+ 169   3            break;
+ 170   3          }
+ 171   2          //-----------------------------------------------------
+ 172   2          if(ReceiveIndex >= RXD_LENGTH){ ReceiveIndex = 0x00;  }//防止缓冲区溢出
+ 173   2        }
+ 174   1        if((S2CON & 0x02) !=0x00)//发送中断
+ 175   1        { 
+ 176   2          S2CON = (S2CON &0xFD) |0x02;//清除中断标志
+ 177   2          UART_2.BIT.BIT_3 = EQUAL_L;
+ 178   2        }
+C51 COMPILER V9.01   UART_2_ISR_                                                           07/23/2024 14:43:11 PAGE 4   
+
+ 179   1      }
+ 180          //-----------------------------------------------------------------------------
+ 181          void UART2_Transmit(unsigned char TXD_DATA)
+ 182          {unsigned int TimeOverCount = 2000;
+ 183   1        do{ if(UART_2.BIT.BIT_3 ==EQUAL_L)
+ 184   2          { TimeOverCount = 0;    }
+ 185   2        }while(TimeOverCount--);//消除死循环
+ 186   1        UART_2.BIT.BIT_3 = EQUAL_H;//发送完成，产生中断清除
+ 187   1        S2BUF = TXD_DATA;//装入数据
+ 188   1      }
+ 189          
+ 190          //==================================================================================
+ 191          //  0 //0x6A    起始字符
+ 192          //  1 // 24     长度
+ 193          //  2 //0x00    机器运行状态  0待机，0xA3开机，0x5C关机，0xAC手动泵油
+ 194          //  3 //0x01    产品类型 ID (1风暖 2水暖)
+ 195          //  4 //0x01    燃油类型  1柴油，2汽油，3甲醛，其他类型--后面补充
+ 196          //  5 // + 8    温度下限
+ 197          //  6 // +35    温度上限
+ 198          //  7 //1.3Hz   最小泵油量
+ 199          //  8 //5.5Hz   最大泵油量
+ 200          //  9
+ 201          // 10 //1350 RPM  最小风速
+ 202          // 11
+ 203          // 12 //4500 RPM  最大风速
+ 204          // 13 //12--24    工作电压
+ 205          // 14 //1 - 6   点火塞功率
+ 206          // 15 //3000 米
+ 207          // 16 //=========== 海拔高度
+ 208          // 17 // 20     空气含氧量
+ 209          // 18 //1-2     控温类型  1自动控温，2手动控温（默认手动）
+ 210          // 19 //8-35    面板设定温度
+ 211          // 20 //-40  +50  面板环境温度
+ 212          // 21 //0x00    开关量1
+ 213          // 22 //0x00    开关量2
+ 214          // 23 // xx     发送次数计数值
+ 215          // 24 // xx
+ 216          // 25 // xx     校验码
+ 217          void ControlDataInitial(void)
+ 218          {union{
+ 219   1        unsigned int Data;
+ 220   1        unsigned char Array[2];
+ 221   1      }Temp;
+ 222   1        UART2_TxCount++;//随机值 递增
+ 223   1      //-----------------------------------------------------
+ 224   1        UART_2_TXD[ 0] = UART_Synchrodata;
+ 225   1        UART_2_TXD[ 1] = 24;//长度
+ 226   1      //-----------------------------------------------------
+ 227   1        UART_2_TXD[ 2] = Config.Struct.ProductType;//产品类型 ID (1风暖 2水暖)
+ 228   1      //-----------------------------------------------------
+ 229   1        UART_2_TXD[ 3] = SystemRunIndex;////运行状态
+ 230   1      //-----------------------------------------------------
+ 231   1        UART_2_TXD[ 4] = Config.Struct.SetupFuelType;//燃油类型 1柴油，2汽油，3甲醛
+ 232   1        UART_2_TXD[ 5] = Config.Struct.SetupTemper_L_Limit;//温度下限
+ 233   1        UART_2_TXD[ 6] = Config.Struct.SetupTemper_H_Limit;//温度上限
+ 234   1      //-----------------------------------------------------
+ 235   1        UART_2_TXD[ 7] = Config.Struct.MIN_OilPumpCycle;//最小泵油量
+ 236   1        UART_2_TXD[ 8] = Config.Struct.MAX_OilPumpCycle;//最大泵油量
+ 237   1        UART_2_TXD[ 9] = Config.Struct.MIN_FanSpeed.Array[0];
+ 238   1        UART_2_TXD[10] = Config.Struct.MIN_FanSpeed.Array[1];//最小风速
+ 239   1        UART_2_TXD[11] = Config.Struct.MAX_FanSpeed.Array[0];
+ 240   1        UART_2_TXD[12] = Config.Struct.MAX_FanSpeed.Array[1];//最大风速
+C51 COMPILER V9.01   UART_2_ISR_                                                           07/23/2024 14:43:11 PAGE 5   
+
+ 241   1      //-----------------------------------------------------
+ 242   1        UART_2_TXD[13] = Config.Struct.SystemPowerVolatge;//工作电压
+ 243   1        UART_2_TXD[14] = Config.Struct.Ignition_Power;//点火塞功率
+ 244   1        //-------------------------------------------------
+ 245   1        UART_2_TXD[15] = Config.Struct.TemperatureType;//控温类型选择 (1自动控温，2手动控温  默认手动)
+ 246   1        UART_2_TXD[16] = Config.Struct.EnergyLevel;//输出功率级别
+ 247   1        UART_2_TXD[17] = WorkingTime;//工作时间
+ 248   1        //-------------------------------------------------
+ 249   1        Temp.Data = AvgAltitude.Data /100;//去除小数
+ 250   1        UART_2_TXD[18] = Temp.Array[0];
+ 251   1        UART_2_TXD[19] = Temp.Array[1];//实际海拔高度
+ 252   1        UART_2_TXD[20] = Config.Struct.RunStateType;//加热状态类型 == 1 单次加热，== 2 循环加热
+ 253   1      //-----------------------------------------------------
+ 254   1        UART_2_TXD[21] = 0x00;
+ 255   1        UART_2_TXD[22] = 0x00;
+ 256   1        UART_2_TXD[23] = UART2_TxCount;//随机码
+ 257   1      }
+ 258          //==================================================================================
+ 259          void UART2_DataTransmit (void)
+ 260          {unsigned char *TxIndex; unsigned char Tx_Count,Lenght;
+ 261   1      //---------------------------------------------------------
+ 262   1        if(TakeRunStateTime >120)//获取主机运行状态间隔300mS
+ 263   1        { TakeRunStateTime = 0x00;//准备下一次
+ 264   2          UART_2.BIT.BIT_2 = EQUAL_H;//启动发送
+ 265   2        ///////////////////////////////////////////////////////
+ 266   2          ControlDataInitial();//更新配置数据的状态
+ 267   2        }
+ 268   1          //-----------------------------------------------------
+ 269   1        if(UART_2.BIT.BIT_2 == EQUAL_H)//发送数据
+ 270   1        { UART2_Direction_SET;///////启动发送
+ 271   2      
+ 272   2          RunData_Copy(&UART_2_TXD[2],&UART_2_TXD[2],UART_2_TXD[ 1],UART2_TxCount,(UART_2_TXD[1] -3));//加密发送的
+             -数据
+ 273   2            //-----------------------------------------------------
+ 274   2          Lenght = UART_2_TXD[1];//获取长度
+ 275   2          CRC16_CHECK(&UART_2_TXD[0],Lenght);//生成校验码
+ 276   2          UART_2_TXD[Lenght++] = CRC_DATA.CRC_Array[0];
+ 277   2          UART_2_TXD[Lenght  ] = CRC_DATA.CRC_Array[1];//存储校验
+ 278   2          //-------------------------------------------------
+ 279   2          TxIndex = &UART_2_TXD[0];
+ 280   2          UART2_Transmit(*TxIndex++);//起始码
+ 281   2          Tx_Count = *TxIndex++;
+ 282   2          UART2_Transmit(Tx_Count);//发送长度
+ 283   2          //-------------------------------------------------
+ 284   2          while(Tx_Count-- > 0x00)//发送数据体
+ 285   2          { UART2_Transmit(*TxIndex++);   }
+ 286   2          //-------------------------------------------------
+ 287   2          UART_2.BIT.BIT_2 = EQUAL_L;//执行后清除
+ 288   2          UART2_SendHoldTime = 3;//启动发送 到开始发送间隔 30mS
+ 289   2        }
+ 290   1      }
+ 291          
+ 292          //-----------------------------------------------------------------------------
+ 293          //  0 //起始字符
+ 294          //  1 //长度
+ 295          //  2 //产品类型 ID
+ 296          //  3 //运行状态
+ 297          //  4 //历史故障码
+ 298          //  5 //
+ 299          //  6 //供电电压
+ 300          //  7 //
+ 301          //  8 //电机转速
+C51 COMPILER V9.01   UART_2_ISR_                                                           07/23/2024 14:43:11 PAGE 6   
+
+ 302          //  9 //
+ 303          // 10 //电机电压
+ 304          // 11 //
+ 305          // 12 //点火塞电压
+ 306          // 13 //
+ 307          // 14 //点火塞电流
+ 308          // 15 //设定泵油频率
+ 309          // 16 //当前泵油频率
+ 310          // 17 //剩余油量
+ 311          // 18 //
+ 312          // 19 //机器壳体温度
+ 313          // 20 //
+ 314          // 21 //排气口温度
+ 315          // 22 //
+ 316          // 23 //水泵工作电压
+ 317          // 24 //进水口温度
+ 318          // 25 //出水口温度
+ 319          // 26 //进风口温度
+ 320          // 27 //
+ 321          // 28 //开关量状态
+ 322          // 29 //
+ 323          // 30 //累计开机运行时间
+ 324          // 31 //发送次数计数值
+ 325          // 32 //
+ 326          // 33 //校验码
+ 327          //==================================================================================
+ 328          unsigned char CommandSendCount;//命令发送计数
+ 329          //==================================================================================
+ 330          void UART2_DataProcess(void)
+ 331          {unsigned char Lenght;
+ 332   1      //-------------------------------------------------------------------
+ 333   1        if(UART_2.BIT.BIT_1 == EQUAL_H)
+ 334   1        { Lenght = UART_2_RXD[1];//获取长度
+ 335   2          CRC16_CHECK(&UART_2_RXD[0],Lenght);//生成校验码
+ 336   2          //-----------------------------------------------------------
+ 337   2          if((UART_2_RXD[  Lenght] == CRC_DATA.CRC_Array[0])
+ 338   2           &&(UART_2_RXD[++Lenght] == CRC_DATA.CRC_Array[1]))
+ 339   2          { switch(UART_2_RXD[0])
+ 340   3            {case 0x6A://收到正常数据
+ 341   4                RunData_Copy(&UART_2_RXD[2],&UART_2_RXD[2],UART_2_RXD[ 0],UART_2_RXD[UART_2_RXD[1] -1],(UART_2_RXD[1]
+             - -3));//还原收到的数据
+ 342   4              //---------------------------------------------------
+ 343   4                if(Config.Struct.ProductType != UART_2_RXD[2]){ break;  }//产品类型 ID 发送和收到的 ID 不符，直接退出
+ 344   4              //---------------------------------------------------
+ 345   4                if(SystemRunIndex != 0x00)//自动关闭
+ 346   4                { if(++CommandSendCount >3)
+ 347   5                  { SystemRunIndex = UART_Null; }//按键执行，清除状态
+ 348   5                }
+ 349   4                else
+ 350   4                { CommandSendCount = 0x00;  }
+ 351   4              //-------------------------------------------------
+ 352   4                SystemRunState = UART_2_RXD[3];//运行状态
+ 353   4                ErrorIndex = UART_2_RXD[4];//历史故障码
+ 354   4              //---------------------------------------------------
+ 355   4                RunVoltage.Array[0] = UART_2_RXD[5];//工作电压
+ 356   4                RunVoltage.Array[1] = UART_2_RXD[6];
+ 357   4              //---------------------------------------------------
+ 358   4                RotateSpeed.Array[0] = UART_2_RXD[7];//转速数据
+ 359   4                RotateSpeed.Array[1] = UART_2_RXD[8];
+ 360   4              //---------------------------------------------------
+ 361   4                Fan_Vot.Array[0] = UART_2_RXD[9];
+ 362   4                Fan_Vot.Array[1] = UART_2_RXD[10];//电机电压
+C51 COMPILER V9.01   UART_2_ISR_                                                           07/23/2024 14:43:11 PAGE 7   
+
+ 363   4              //---------------------------------------------------
+ 364   4                Ignition_Vot.Data[0] = UART_2_RXD[11];
+ 365   4                Ignition_Vot.Data[1] = UART_2_RXD[12];//点火塞电压
+ 366   4                Ignition_CUR.Data[0] = UART_2_RXD[13];
+ 367   4                Ignition_CUR.Data[1] = UART_2_RXD[14];//点火塞电流
+ 368   4              //---------------------------------------------------
+ 369   4                OilpumpSetFrequ = UART_2_RXD[15];//油泵设定频率
+ 370   4                OilPumpFrequency = UART_2_RXD[16];//油泵实际工作频率
+ 371   4              //---------------------------------------------------
+ 372   4              //  UART_2_RXD[29];//剩余油量数据
+ 373   4              //---------------------------------------------------
+ 374   4                SW.TempArray[0] = UART_2_RXD[18];
+ 375   4                SW.TempArray[1] = UART_2_RXD[19];//壳体温度值
+ 376   4              //---------------------------------------------------
+ 377   4                HY.TempArray[0] = UART_2_RXD[20];
+ 378   4                HY.TempArray[1] = UART_2_RXD[21];//排气口温度
+ 379   4              //---------------------------------------------------
+ 380   4                WaterPump_CUR.Array[0] = UART_2_RXD[22];
+ 381   4                WaterPump_CUR.Array[1] = UART_2_RXD[23];//水泵工作电流
+ 382   4              //---------------------------------------------------
+ 383   4              //  UART_2_RXD[24];//进水口温度
+ 384   4              //  UART_2_RXD[25];//出水口温度
+ 385   4              //---------------------------------------------------
+ 386   4                RemainingWorkingTime = UART_2_RXD[26];//剩余工作时间
+ 387   4              //---------------------------------------------------
+ 388   4              //  UART_2_RXD[27];
+ 389   4              //  UART_2_RXD[28];//开关量状态
+ 390   4              //---------------------------------------------------
+ 391   4              //  UART_2_RXD[29];
+ 392   4              //  UART_2_RXD[30];
+ 393   4              //  UART_2_RXD[31];
+ 394   4              //  UART_2_RXD[32];//累计开机运行时间
+ 395   4              //---------------------------------------------------
+ 396   4              //---------------------------------------------------
+ 397   4              break;
+ 398   4             case 0xFF://广播模式，必须响应
+ 399   4              break;
+ 400   4            }
+ 401   3            UART_ERROR_Time = 100;//通信错误故障
+ 402   3          }
+ 403   2          //-------------------------------------------------
+ 404   2          UART_2.BIT.BIT_1 = EQUAL_L;
+ 405   2        }
+ 406   1      }
+ 407          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1317    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =     86      18
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

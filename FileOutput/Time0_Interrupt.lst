@@ -1,0 +1,99 @@
+C51 COMPILER V9.01   TIME0_INTERRUPT                                                       07/23/2024 14:43:11 PAGE 1   
+
+
+C51 COMPILER V9.01, COMPILATION OF MODULE TIME0_INTERRUPT
+OBJECT MODULE PLACED IN .\FileOutput\Time0_Interrupt.obj
+COMPILER INVOKED BY: D:\software\keil\C51\BIN\C51.EXE SourceFile\Time0_Interrupt.C LARGE OMF2 OPTIMIZE(8,SPEED) BROWSE I
+                    -NCDIR(.\ConfigFile;.\CMT2300A) DEBUG PRINT(.\FileOutput\Time0_Interrupt.lst) TABS(2) OBJECT(.\FileOutput\Time0_Interrupt
+                    -.obj)
+
+line level    source
+
+   1          //---------------------------------------------------------
+   2          #include <intrins.h>
+   3          #include "ca51f_config.h"
+   4          #include "ca51f2sfr.h"
+   5          #include "ca51f2xsfr.h"
+   6          #include "gpiodef_f2.h"
+   7          #include "system.h"
+   8          
+   9          #include "Timer0_ISR.H"
+  10          #include "UART2_ISR.h"
+  11          #include "DisplayUpdata.H"
+  12          #include "KeyEvent.H"
+  13          
+  14          #include "RF_Receiver.H"
+  15          //---------------------------------------------------------
+  16          //#define T0L_DATA  0xF8
+  17          //#define T0H_DATA  0xF6
+  18          
+  19          //#define T0L_DATA  0x8F
+  20          //#define T0H_DATA  0xFF
+  21          
+  22          #define T0L_DATA  0x82
+  23          #define T0H_DATA  0xFF
+  24          //---------------------------------------------------------
+  25          xdata unsigned char InterruptCount;
+  26          
+  27          xdata unsigned char Interrupt_2_5mS;
+  28          xdata unsigned char OneSecondTime;//秒闪
+  29          //---------------------------------------------------------
+  30          void Timer0_Initial(void)//@ 11.0592MHz
+  31          { TMOD &= 0xF0;
+  32   1        TMOD |= 0x01;
+  33   1        TL0 = T0L_DATA;//设置定时初值
+  34   1        TH0 = T0H_DATA;//设置定时初值 2.5mS
+  35   1        TF0 = 0;    //清除TF0标志
+  36   1        ET0 = 1;    //使能 定时器0 中断
+  37   1        TR0 = 1;    //定时器0开始计时
+  38   1      }
+  39          //---------------------------------------------------------
+  40          void Timer0_ISR(void) interrupt 1 using 1
+  41          { TF0 = 0;    //清除TF0标志
+  42   1        TL0 = T0L_DATA;//设置定时初值
+  43   1        TH0 = T0H_DATA;//设置定时初值 2.5mS
+  44   1        //------------------------------------------------------------
+  45   1        RF_SampleReceive();
+  46   1        //------------------------------------------------------------
+  47   1      //  P6 ^=0x02;//测试定时中断
+  48   1        //------------------------------------------------------------
+  49   1        if(++Interrupt_2_5mS <20){    return;   }
+  50   1        Interrupt_2_5mS = 0x00;
+  51   1        //------------------------------------------------------------
+  52   1        InterruptCount++;// 2.5mS中断一次
+  53   1        Fan_DisplayTime++;//控制扇叶动态显示
+C51 COMPILER V9.01   TIME0_INTERRUPT                                                       07/23/2024 14:43:11 PAGE 2   
+
+  54   1        TakeRunStateTime++;
+  55   1        //------------------------------------------------------------
+  56   1        KeyStateScan();//读取按键
+  57   1        //------------------------------------------------------------
+  58   1        if(UART2_OverTime > 0x00)//防止串口数据超时
+  59   1        { UART2_OverTime--;   }
+  60   1        else
+  61   1        { ReceiveIndex = 0x00;  }
+  62   1        //------------------------------------------------------------
+  63   1        if(UART2_SendHoldTime >0x00)
+  64   1        { if(--UART2_SendHoldTime ==0)
+  65   2          { UART2_Direction_CLR;  }//设为接收
+  66   2        }
+  67   1      }
+  68          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    128    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =      3    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

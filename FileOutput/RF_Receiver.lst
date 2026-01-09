@@ -1,0 +1,320 @@
+C51 COMPILER V9.01   RF_RECEIVER                                                           07/25/2024 08:55:30 PAGE 1   
+
+
+C51 COMPILER V9.01, COMPILATION OF MODULE RF_RECEIVER
+OBJECT MODULE PLACED IN .\FileOutput\RF_Receiver.obj
+COMPILER INVOKED BY: D:\software\keil\C51\BIN\C51.EXE SourceFile\RF_Receiver.C LARGE OMF2 OPTIMIZE(8,SPEED) BROWSE INCDI
+                    -R(.\ConfigFile;.\CMT2300A) DEBUG PRINT(.\FileOutput\RF_Receiver.lst) TABS(2) OBJECT(.\FileOutput\RF_Receiver.obj)
+
+line level    source
+
+   1          //************************************************************************
+   2          //功能说明：利用单片机定时中断，主动采样方式，读取信号,解码无线遥控发射码
+   3          //      采样时间120--130uS
+   4          //************************************************************************
+   5          #include <intrins.h>
+   6          #include "ca51f_config.h"
+   7          #include "ca51f2sfr.h"
+   8          #include "ca51f2xsfr.h"
+   9          #include "gpiodef_f2.h"
+  10          #include "system.h"
+  11          
+  12          #include "flash.h"
+  13          #include "KeyEvent.H"
+  14          #include "UART2_ISR.h"
+  15          #include "RF_Receiver.H"
+  16          #include "DisplayUpdata.H"
+  17          #include "WT588Fxx.h"
+  18          //------------------------------------------------------------------------
+  19          #define  RF_OLD_CODE  //兼容原精一公司遥控编码
+  20          //------------------------------------------------------------------------
+  21          //数据格式 3字节(地址码) +1字节功能码(2位标志 00手动 11自动，6位按键功能) + 1字节 温度值(8 -- 35度)
+  22          #ifdef  RF_OLD_CODE
+  23            #define NBIT         31 // 数据长度
+  24          #else
+                #define NBIT         40 // 数据长度
+              #endif
+  27          ///////
+  28          #define LONG_HEAD    100  // long  head
+  29          #define SHORT_HEAD   50   // short head
+  30          #define HIGH_TO     -16   // high periods
+  31          #define LOW_TO       16   // low  periods
+  32          //------------------------------------------------------------------------
+  33          #define RF_RESET  0x00
+  34          #define RF_SYNCHRO  0x01
+  35          #define RF_0_TO_1 0x02
+  36          #define RF_1_TO_0 0x03
+  37          //------------------------------------------------------------------------
+  38          #define RF_SampledPort  (P4 &0x08)
+  39          
+  40          //------------------------------------------------------------------------
+  41          xdata struct {
+  42            unsigned char RF_Sampled:1; // sampled RF signal
+  43            unsigned char RF_BufferFull:1;  // buffer full
+  44          }RF_Bit;
+  45          //------------------------------------------------------------------------
+  46          xdata signed char RF_Count;  // timer counter
+  47          xdata unsigned char RF_State;// receive state
+  48          xdata unsigned char BitCount;// receive bits counter
+  49          ////////
+  50          xdata unsigned char RF_Index;// receive buffer pointer
+  51          
+  52          #define RF_BUFFER_LENGHT  6
+  53          xdata unsigned char RF_BUFFER[RF_BUFFER_LENGHT];// receive buffer
+  54          ////////
+C51 COMPILER V9.01   RF_RECEIVER                                                           07/25/2024 08:55:30 PAGE 2   
+
+  55          // receive buffer map  --  S.DDDDDDDD.DDDDDDDD.DDDDKKKK.
+  56          //                    0        1        2
+  57          //S --> Head Synchro  --> Ignore
+  58          //D --> Serial Number --> 16 Bit
+  59          //K --> Key Map     --> 8  Bit
+  60          //------------------------------------------------------------------------
+  61          #define OUTACTIONHOLD   3 //output delay 
+  62          xdata unsigned char OutHoldTime;// output timer
+  63          
+  64          xdata unsigned char RF_LearnAddrssTime;//用于学习地址码
+  65          //------------------------------------------------------------------------
+  66          
+  67          xdata unsigned char RF_KEY_Hold[2];//按键值备份
+  68          //************************************************************************
+  69          void RF_Receiver_Initial(void)
+  70          {unsigned char Count;
+  71   1        for(Count=0;Count <RF_BUFFER_LENGHT;Count++)
+  72   1        { RF_BUFFER[Count] = 0x00;  }
+  73   1        RF_State = RF_RESET;// reset state machine
+  74   1        //----------------------------------------------------------
+  75   1        OutHoldTime = 0x00;//输出保持时间
+  76   1        //----------------------------------------------------------
+  77   1        RF_KEY_Hold[0] = 0x00;
+  78   1        RF_KEY_Hold[1] = 0x00;//重置
+  79   1        //----------------------------------------------------------
+  80   1        RF_LearnAddrssTime = 0x00;//学习地址码时间
+  81   1      }
+  82          //************************************************************************
+  83          void RF_SampleReceive(void)
+  84          { if(RF_SampledPort != EQUAL_L)//获取端口状态，适应同向，和反向输出的接收模块
+  85   1        { RF_Bit.RF_Sampled = EQUAL_H;  }//解码程序默认为，收到的信号是反向的
+  86   1        else
+  87   1        { RF_Bit.RF_Sampled = EQUAL_L;  }
+  88   1        //------------------------------------------------------------
+  89   1        if(RF_Bit.RF_BufferFull == EQUAL_L)//接收缓冲未满继续接收
+  90   1        { switch(RF_State)//state machine main switch
+  91   2          {case RF_0_TO_1:
+  92   3              if(RF_Bit.RF_Sampled == 0)// sampling RF pin
+  93   3              {// falling edge detected  ____
+  94   4               //                            |
+  95   4               //                            |_____
+  96   4                RF_State = RF_1_TO_0;
+  97   4              }
+  98   3              else//while high 
+  99   3              { if(--RF_Count < HIGH_TO)
+ 100   4                { RF_State = RF_RESET; // reset if too long
+ 101   5                }
+ 102   4              }
+ 103   3            break;
+ 104   3           case RF_1_TO_0:
+ 105   3              if(RF_Bit.RF_Sampled == 1)// sampling RF pin
+ 106   3              {// rising edge detected   _____
+ 107   4               //                       |
+ 108   4               //                   ____|
+ 109   4                RF_BUFFER[RF_Index] <<= 0x01;//Shift Bit
+ 110   4                //-------------------------------------------------------------
+ 111   4                if(RF_Count <= 0x00)
+ 112   4                { RF_BUFFER[RF_Index] |=0x01;   }
+ 113   4                else
+ 114   4                { RF_BUFFER[RF_Index] &=0xFE;   }
+ 115   4                RF_Count = 0x00;//Reset counter
+ 116   4                RF_State= RF_0_TO_1;
+C51 COMPILER V9.01   RF_RECEIVER                                                           07/25/2024 08:55:30 PAGE 3   
+
+ 117   4                //-------------------------------------------------------------
+ 118   4                if((++BitCount & 0x07)==0x00)
+ 119   4                { RF_Index++;     }
+ 120   4                if(BitCount >= NBIT)
+ 121   4                { RF_State = RF_RESET;//完成接收
+ 122   5                  RF_Bit.RF_BufferFull = EQUAL_H;
+ 123   5                }
+ 124   4              }
+ 125   3              else// still low
+ 126   3              { if(++RF_Count >= LOW_TO)  // too long low
+ 127   4                { RF_State = RF_SYNCHRO;// fail back into RFSYNC state 
+ 128   5                  BitCount = 0x00;
+ 129   5                  RF_Index = 0x00; // reset pointers 
+ 130   5                }
+ 131   4              }
+ 132   3            break;
+ 133   3          case RF_SYNCHRO:
+ 134   3              if(RF_Bit.RF_Sampled == 1)// sampling RF pins
+ 135   3              {// rising edge detected  ___                  ___
+ 136   4               //                          |   <-Header->   |
+ 137   4               //                          |________________|
+ 138   4                if(RF_Count < SHORT_HEAD)// too short, no header
+ 139   4                { RF_State = RF_RESET;
+ 140   5                }
+ 141   4                else
+ 142   4                { RF_Count =0x00;     // restart counter
+ 143   5                  RF_State= RF_0_TO_1;//Header
+ 144   5                }
+ 145   4              }
+ 146   3              else//Still low
+ 147   3              { if(++RF_Count >= LONG_HEAD)// too long, no header
+ 148   4                { RF_State = RF_RESET;
+ 149   5                }
+ 150   4              }
+ 151   3            break;
+ 152   3          default://State Initial
+ 153   3              RF_State = RF_SYNCHRO;// reset state machine
+ 154   3              RF_Count =0x00;
+ 155   3              BitCount = 0x00;
+ 156   3              RF_Index = 0x00;
+ 157   3            break;
+ 158   3          }// switch
+ 159   2        }
+ 160   1      }
+ 161          //************************************************************************
+ 162          void WirelessDecode(void)
+ 163          {
+ 164   1      #ifdef  RF_OLD_CODE //兼容原精一公司遥控编码
+ 165   1        if(RF_Bit.RF_BufferFull == EQUAL_H)
+ 166   1        { if((RF_LearnAddrssTime > 0x00)//在5S学习时间内
+ 167   2           &&(((RF_BUFFER[2] ==0x05)&&(RF_BUFFER[3] == 0x04))
+ 168   2            ||((RF_BUFFER[2] ==0x11)&&(RF_BUFFER[3] == 0x58))))
+ 169   2          { Config.Struct.RF_Address.Array[1] = RF_BUFFER[0];//地址高位
+ 170   3            Config.Struct.RF_Address.Array[2] = RF_BUFFER[1];//地址低位
+ 171   3            RF_LearnAddrssTime = 0x00;//完成学习后禁止
+ 172   3            DataChangeUpdataTime = 6;//设定参数回存时间
+ 173   3          }
+ 174   2          //-----------------------------------------------------------
+ 175   2          if((Config.Struct.RF_Address.Array[1] != RF_BUFFER[0])
+ 176   2           ||(Config.Struct.RF_Address.Array[2] != RF_BUFFER[1]))
+ 177   2          { goto DecodeEnd;//收到地址码错误，退出
+ 178   3          }//验证地址码
+C51 COMPILER V9.01   RF_RECEIVER                                                           07/25/2024 08:55:30 PAGE 4   
+
+ 179   2          if((RF_KEY_Hold[0] == RF_BUFFER[2])
+ 180   2           &&(RF_KEY_Hold[1] == RF_BUFFER[3]))
+ 181   2          { OutHoldTime = OUTACTIONHOLD;
+ 182   3            goto DecodeEnd ;//在规定时间内收到重复码
+ 183   3          }
+ 184   2          //-----------------------------------------------------------
+ 185   2          RF_KEY_Hold[0] = RF_BUFFER[2];
+ 186   2          RF_KEY_Hold[1] = RF_BUFFER[3];//保存上次键值
+ 187   2          BackLightTime = 500;//设置背光高亮时间
+ 188   2          //-----------------------------------------------------------
+ 189   2          if((RF_KEY_Hold[0] ==0x08)&&(RF_KEY_Hold[1] == 0x78))
+ 190   2          { if(Config.Struct.EnergyLevel <9)//输出功率 0-9 共10级
+ 191   3            {   Config.Struct.EnergyLevel++;
+ 192   4              DataChangeUpdataTime = 6;//设定参数回存时间
+ 193   4            }
+ 194   3            DisplayStateIndex = 0x02;//显示设定温度
+ 195   3            ExitSetupTime = 3;//以秒为单位
+ 196   3            OutHoldTime = OUTACTIONHOLD;
+ 197   3          }
+ 198   2          if((RF_KEY_Hold[0] ==0x02)&&(RF_KEY_Hold[1] == 0x44))//下调
+ 199   2          { if(Config.Struct.EnergyLevel >1)//输出功率 0-9 共10级
+ 200   3            {   Config.Struct.EnergyLevel--;
+ 201   4              DataChangeUpdataTime = 6;//设定参数回存时间
+ 202   4            }
+ 203   3            DisplayStateIndex = 0x02;//显示设定温度
+ 204   3            ExitSetupTime = 3;//以秒为单位
+ 205   3            OutHoldTime = OUTACTIONHOLD;
+ 206   3          }
+ 207   2          if((RF_KEY_Hold[0] ==0x05)&&(RF_KEY_Hold[1] == 0x04))
+ 208   2          { SystemRunIndex = UART_PowerOff;
+ 209   3            OutHoldTime = OUTACTIONHOLD;
+ 210   3          }
+ 211   2          if((RF_KEY_Hold[0] ==0x11)&&(RF_KEY_Hold[1] == 0x58))
+ 212   2          { if(((RunVoltage.Data >100)&&(RunVoltage.Data <170))
+ 213   3             ||((RunVoltage.Data >190)&&(RunVoltage.Data <320)))//电压限制
+ 214   3            { SystemRunIndex = URAT_PowerOn;
+ 215   4              KeyCount_Time = 0x00;
+ 216   4            }//启动
+ 217   3            OutHoldTime = OUTACTIONHOLD;
+ 218   3          }
+ 219   2          //-----------------------------------------------------------
+ 220   2         DecodeEnd://收到重码退出
+ 221   2          RF_Bit.RF_BufferFull = EQUAL_L;
+ 222   2        }
+ 223   1      #else
+              //  if(RF_Bit.RF_BufferFull == EQUAL_H)
+              //  { if((RF_LearnAddrssTime > 0x00)//在5S学习时间内
+              //     &&(((RF_BUFFER[2] ==0x05)&&(RF_BUFFER[3] == 0x04))
+              //      ||((RF_BUFFER[2] ==0x11)&&(RF_BUFFER[3] == 0x58))))
+              //    { Config.Struct.RF_Address.Array[1] = RF_BUFFER[0];//地址高位
+              //      Config.Struct.RF_Address.Array[2] = RF_BUFFER[1];//地址低位
+              //      RF_LearnAddrssTime = 0x00;//完成学习后禁止
+              //      DataChangeUpdataTime = 6;//设定参数回存时间
+              //    }
+              //    //-----------------------------------------------------------
+              //    if((Config.Struct.RF_Address.Array[1] != RF_BUFFER[0])
+              //     ||(Config.Struct.RF_Address.Array[2] != RF_BUFFER[1]))
+              //    { goto DecodeEnd;//收到地址码错误，退出
+              //    }//验证地址码
+              //    if((RF_KEY_Hold[0] == RF_BUFFER[2])
+              //     &&(RF_KEY_Hold[1] == RF_BUFFER[3]))
+              //    { OutHoldTime = OUTACTIONHOLD;
+C51 COMPILER V9.01   RF_RECEIVER                                                           07/25/2024 08:55:30 PAGE 5   
+
+              //      goto DecodeEnd ;//在规定时间内收到重复码
+              //    }
+              //    //-----------------------------------------------------------
+              //    RF_KEY_Hold[0] = RF_BUFFER[2];
+              //    RF_KEY_Hold[1] = RF_BUFFER[3];//保存上次键值
+              //    //-----------------------------------------------------------
+              //    if((RF_KEY_Hold[0] ==0x08)&&(RF_KEY_Hold[1] == 0x78))
+              //    { if(Config.Struct.EnergyLevel <9)//输出功率 0-9 共10级
+              //      {   Config.Struct.EnergyLevel++;
+              //        DataChangeUpdataTime = 6;//设定参数回存时间
+              //      }
+              //      DisplayStateIndex = 0x02;//显示设定温度
+              //      ExitSetupTime = 3;//以秒为单位
+              //      OutHoldTime = OUTACTIONHOLD;
+              //    }
+              //    if((RF_KEY_Hold[0] ==0x02)&&(RF_KEY_Hold[1] == 0x44))//下调
+              //    { if(Config.Struct.EnergyLevel >1)//输出功率 0-9 共10级
+              //      {   Config.Struct.EnergyLevel--;
+              //        DataChangeUpdataTime = 6;//设定参数回存时间
+              //      }
+              //      DisplayStateIndex = 0x02;//显示设定温度
+              //      ExitSetupTime = 3;//以秒为单位
+              //      OutHoldTime = OUTACTIONHOLD;
+              //    }
+              //    if((RF_KEY_Hold[0] ==0x05)&&(RF_KEY_Hold[1] == 0x04))
+              //    { SystemRunIndex = UART_PowerOff;
+              //      OutHoldTime = OUTACTIONHOLD;
+              //    }
+              //    if((RF_KEY_Hold[0] ==0x11)&&(RF_KEY_Hold[1] == 0x58))
+              //    { if(((RunVoltage.Data >100)&&(RunVoltage.Data <170))
+              //       ||((RunVoltage.Data >190)&&(RunVoltage.Data <320)))//电压限制
+              //      { SystemRunIndex = URAT_PowerOn;
+              //        KeyCount_Time = 0x00;
+              //      }//启动
+              //      OutHoldTime = OUTACTIONHOLD;
+              //    }
+              //    //-----------------------------------------------------------
+              //   DecodeEnd://收到重码退出
+              //    RF_Bit.RF_BufferFull = EQUAL_L;
+              //  }
+              #endif
+ 282   1      }
+ 283          
+ 284          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    687    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =     15    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

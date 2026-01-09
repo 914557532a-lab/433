@@ -1,0 +1,1 @@
+"SourceFile\Flash_DATA.C" LARGE OMF2 OPTIMIZE (8,SPEED) BROWSE INCDIR(.\ConfigFile;.\CMT2300A) DEBUG PRINT(.\FileOutput\Flash_DATA.lst) TABS (2) OBJECT(.\FileOutput\Flash_DATA.obj)

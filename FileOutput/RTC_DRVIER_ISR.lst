@@ -1,0 +1,192 @@
+C51 COMPILER V9.01   RTC_DRVIER_ISR                                                        07/23/2024 13:20:06 PAGE 1   
+
+
+C51 COMPILER V9.01, COMPILATION OF MODULE RTC_DRVIER_ISR
+OBJECT MODULE PLACED IN .\FileOutput\RTC_DRVIER_ISR.obj
+COMPILER INVOKED BY: D:\software\keil\C51\BIN\C51.EXE SourceFile\RTC_DRVIER_ISR.C LARGE OMF2 OPTIMIZE(8,SPEED) BROWSE IN
+                    -CDIR(.\ConfigFile;.\CMT2300A) DEBUG PRINT(.\FileOutput\RTC_DRVIER_ISR.lst) TABS(2) OBJECT(.\FileOutput\RTC_DRVIER_ISR.ob
+                    -j)
+
+line level    source
+
+   1          //---------------------------------------------------------
+   2          //功能说明：设定芯片内部 实时时钟 ，开启定时中断
+   3          //---------------------------------------------------------
+   4          #include <intrins.h>
+   5          #include "ca51f_config.h"
+   6          #include "ca51f2sfr.h"
+   7          #include "ca51f2xsfr.h"
+   8          #include "gpiodef_f2.h"
+   9          
+  10          #include "KeyEvent.H"
+  11          #include "RTC_DRVIER.H"
+  12          #include "DisplayUpdata.H"
+  13          //---------------------------------------------------------
+  14          xdata unsigned char TimeBuffer[3];//时，分，秒
+  15          ////////////////闹钟时间/////////////////////////////
+  16          //AlaramTime[0] 第一组闹钟开关
+  17          //AlaramTime[1] 第一组小时
+  18          //AlaramTime[2] 第一组分钟
+  19          
+  20          //AlaramTime[3] 第二组闹钟开关
+  21          //AlaramTime[4] 第二组小时
+  22          //AlaramTime[5] 第二组分钟
+  23          xdata unsigned char AlaramTime[6];
+  24          //---------------------------------------------------------
+  25          void Delay_50us(unsigned int Loop)
+  26          {unsigned char Count;
+  27   1        do
+  28   1        { Count = 35;
+  29   2          while (--Count);
+  30   2        }while (--Loop);
+  31   1      }
+  32          //---------------------------------------------------------
+  33          //函数名: RTC_TimeWrite
+  34          //功能说明: RTC写入小时
+  35          //输入参数: hour  小时值  //hour = 0~23
+  36          //输入参数: minute  分值  //minute = 0~59
+  37          //输入参数: second  秒值  //second = 0~59
+  38          //---------------------------------------------------------
+  39          void RTC_TimeWrite(unsigned char hour,unsigned char minute,unsigned char second)
+  40          { RTCON |= RTCWE(1);
+  41   1        Delay_50us(1);
+  42   1        RTCH = (RTCH&0xE0)|hour;
+  43   1        RTCM = minute;
+  44   1        RTCS = second;
+  45   1        Delay_50us(5);
+  46   1        RTCON &= ~RTCWE(1);
+  47   1      }
+  48          //---------------------------------------------------------
+  49          //函数名: RTC_TimeRead
+  50          //功能说明: RTC 时间读出
+  51          //输出参数: hour  小时值  //hour = 0~23
+  52          //输出参数: minute  分值  //minute = 0~59
+  53          //输出参数: second  秒值  //second = 0~59
+C51 COMPILER V9.01   RTC_DRVIER_ISR                                                        07/23/2024 13:20:06 PAGE 2   
+
+  54          //---------------------------------------------------------
+  55          void RTC_TimeRead(void)
+  56          { TimeBuffer[0] = RTCS;
+  57   1        TimeBuffer[1] = RTCM;
+  58   1        TimeBuffer[2] = (RTCH &0x1F);
+  59   1      }
+  60          //---------------------------------------------------------
+  61          //函数名: RTC_Config
+  62          //功能说明: 初始化RTC控制寄存器
+  63          //输入参数: rtce  RTC功能模块使能控制
+  64          //      mse   RTC毫秒中断使能控制
+  65          //      hse   RTC半秒中断使能控制
+  66          //功能说明: 配置RTC ALARM功能寄存器位
+  67          //输入参数: sce   秒比较使能控制
+  68          //      mce   分钟比较使能控制
+  69          //      hce   小时比较使能控制
+  70          //---------------------------------------------------------
+  71          void RTC_Config(RTCE_TypeDef rtce,MSE_TypeDef mse,HSE_TypeDef hse,
+  72                  SCE_TypeDef sce,MCE_TypeDef mce,HCE_TypeDef hce)
+  73          {
+  74   1        RTCON = RTCE(rtce) | MSE(mse) | HSE(hse) | SCE(sce) | MCE(mce) | HCE(hce);
+  75   1      }
+  76          //---------------------------------------------------------
+  77          //函数名: RTC_SetAlaramTime
+  78          //功能说明: 设置RTC ALARM时间
+  79          //输入参数: al_hr   闹钟小时值
+  80          //      al_min    闹钟分钟值
+  81          //      al_sec    闹钟秒值
+  82          //---------------------------------------------------------
+  83          void RTC_SetAlaramTime(unsigned char al_hr,unsigned char al_min,unsigned char al_sec)
+  84          { RTAH  = al_hr;
+  85   1        RTAM  = al_min;
+  86   1        RTAS  = al_sec;
+  87   1      }
+  88          
+  89          //---------------------------------------------------------
+  90          void RTC_InitialSet(void)
+  91          { GPIO_Init(P72F,P72_XOSCL_IN_SETTING);
+  92   1        GPIO_Init(P71F,P71_XOSCL_OUT_SETTING);//配置RTC 模块时钟
+  93   1        //-------------------------------------------
+  94   1        do{ Delay_50us(50);
+  95   2          CKCON |= XLCKE;
+  96   2        }while(!(CKCON & XLSTA));//开启 32.768KHz 晶振
+  97   1        //-------------------------------------------
+  98   1        RTC_Config(RTCE_On,MSE_Off,HSE_On,SCE_On,MCE_Off,HCE_Off);
+  99   1        Delay_50us(300);//必须大于500uS,才能设置时间，否则可能导致时间写入失败
+ 100   1        //-------------------------------------------
+ 101   1        RTC_TimeWrite(0,0,0);//初始化时，分，秒
+ 102   1        //-------------------------------------------
+ 103   1        RTC_TimeRead();
+ 104   1        RTC_SetAlaramTime(0,0,59);
+ 105   1        INT8EN = 1;
+ 106   1        //-------------------------------------------
+ 107   1        AlaramTime[0] = 0x00;//关闭第一组闹钟
+ 108   1        AlaramTime[1] = 99;
+ 109   1        AlaramTime[2] = 59;
+ 110   1        AlaramTime[3] = 0x00;//关闭第二组闹钟
+ 111   1        AlaramTime[4] = 99;
+ 112   1        AlaramTime[5] = 59;
+ 113   1      }
+ 114          //---------------------------------------------------------
+ 115          void RTC_ISR (void) interrupt 13
+C51 COMPILER V9.01   RTC_DRVIER_ISR                                                        07/23/2024 13:20:06 PAGE 3   
+
+ 116          {unsigned int AlarmClockTime;
+ 117   1        if(RTCIF & RTC_MF)  //毫秒中断
+ 118   1        { RTCIF = RTC_MF;
+ 119   2        }
+ 120   1        if(RTCIF & RTC_HF)  //半秒中断--作为定时开机关机的基准时间
+ 121   1        { //P6 ^=0x02;//测试定时中断
+ 122   2      
+ 123   2          RTCIF = RTC_HF;
+ 124   2        }
+ 125   1        if(RTCIF & RTC_AF)  //闹钟中断 一分钟一次
+ 126   1        { RTCIF = RTC_AF;
+ 127   2          
+ 128   2          //------------------------------------------------------
+ 129   2          if((AlaramTime[0] == 0xAA)&&(DisplaySetIndex == 0x00))
+ 130   2          { AlarmClockTime = ((unsigned int)AlaramTime[1] *60) + AlaramTime[2];//获得定时时间
+ 131   3            if(--AlarmClockTime == 0x00)
+ 132   3            { AlaramTime[0] = 0x00;//闹钟失效
+ 133   4              AlaramTime[1] = 99;
+ 134   4              AlaramTime[2] = 59;//重设分钟
+ 135   4              SystemRunIndex = URAT_PowerOn;//开机
+ 136   4            }
+ 137   3            else
+ 138   3            { AlaramTime[1] = AlarmClockTime /60;
+ 139   4              AlaramTime[2] = AlarmClockTime %60;//重设分钟
+ 140   4            }
+ 141   3          }//定时开机 被开启
+ 142   2          //------------------------------------------------------
+ 143   2          if((AlaramTime[3] == 0xAA)&&(DisplaySetIndex == 0x00))
+ 144   2          { AlarmClockTime = ((unsigned int)AlaramTime[4] *60) + AlaramTime[5];//获得定时时间
+ 145   3            if(--AlarmClockTime == 0x00)
+ 146   3            { AlaramTime[3] = 0x00;//闹钟失效
+ 147   4              AlaramTime[4] = 99;
+ 148   4              AlaramTime[5] = 59;//重设分钟
+ 149   4              SystemRunIndex = UART_PowerOff;//关机
+ 150   4            }
+ 151   3            else
+ 152   3            { AlaramTime[4] = AlarmClockTime /60;
+ 153   4              AlaramTime[5] = AlarmClockTime %60;//重设分钟
+ 154   4            }
+ 155   3          }//定时关机 被开启
+ 156   2        }
+ 157   1      }
+ 158          
+ 159          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    505    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =      9       6
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

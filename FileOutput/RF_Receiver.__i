@@ -1,0 +1,1 @@
+"SourceFile\RF_Receiver.C" LARGE OMF2 OPTIMIZE (8,SPEED) BROWSE INCDIR(.\ConfigFile;.\CMT2300A) DEBUG PRINT(.\FileOutput\RF_Receiver.lst) TABS (2) OBJECT(.\FileOutput\RF_Receiver.obj)

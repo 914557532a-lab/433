@@ -1,0 +1,124 @@
+C51 COMPILER V9.01   LCD_DRIVER                                                            07/23/2024 14:43:11 PAGE 1   
+
+
+C51 COMPILER V9.01, COMPILATION OF MODULE LCD_DRIVER
+OBJECT MODULE PLACED IN .\FileOutput\LCD_Driver.obj
+COMPILER INVOKED BY: D:\software\keil\C51\BIN\C51.EXE SourceFile\LCD_Driver.C LARGE OMF2 OPTIMIZE(8,SPEED) BROWSE INCDIR
+                    -(.\ConfigFile;.\CMT2300A) DEBUG PRINT(.\FileOutput\LCD_Driver.lst) TABS(2) OBJECT(.\FileOutput\LCD_Driver.obj)
+
+line level    source
+
+   1          //-----------------------------------------------------------------------------
+   2          //功能说明：液晶驱动寄存器配置程序
+   3          //创建日期：
+   4          //-----------------------------------------------------------------------------
+   5          #include <intrins.h>
+   6          #include "ca51f_config.h"
+   7          #include "ca51f2sfr.h"
+   8          #include "ca51f2xsfr.h"
+   9          #include "gpiodef_f2.h"
+  10          #include "system.h"
+  11          
+  12          //-----------------------------------------------------------------------------
+  13          #include "LCD_DRIVER.H"
+  14          
+  15          //-----------------------------------------------------------------------------
+  16          //函数名：LCD_init
+  17          //功能说明：LCD寄存器初始化
+  18          //输入参数：len   LCD时钟源选择
+  19          //      dmod  驱动电流选择
+  20          //      bias  偏压设置
+  21          //      ldrv  驱动电压等级设置
+  22          //      lxdiv LCD时钟分频系数
+  23          //-----------------------------------------------------------------------------
+  24          void LCD_init(LEN_TypeDef Clk,DMOD_TypeDef dmod,BIAS_TypeDef bias,LDRV_TypeDef ldrv,unsigned int lxdiv)
+  25          {
+  26   1        LXDIVH = (unsigned char)(lxdiv>>8);
+  27   1        LXDIVL = (unsigned char)(lxdiv);
+  28   1        LXCFG =  DMOD(dmod) | BIAS(bias) | LDRV(ldrv);
+  29   1        LXCON =  LEN(Clk) | LMOD(LMOD_lcd);
+  30   1      }
+  31          
+  32          //-----------------------------------------------------------------------------
+  33          //函数名：  LCD_WriteLram
+  34          //功能说明：写入数据到显示缓存
+  35          //输入参数：laddr 显示缓存地址
+  36          //      ldata 显示缓存数据
+  37          //-----------------------------------------------------------------------------
+  38          void LCD_WriteLram(unsigned char laddr, unsigned char ldata)
+  39          {
+  40   1        INDEX = laddr;
+  41   1        LXDAT = ldata;
+  42   1      }
+  43          
+  44          //-----------------------------------------------------------------------------
+  45          //-----------------------------------------------------------------------------
+  46          void LCD_Chip_RAM_Clear(void)
+  47          {unsigned char Count;
+  48   1        for(Count=0;Count<LCD_RAM_SIZE;Count++)
+  49   1        { LCD_WriteLram(Count,0x00);    }
+  50   1      }
+  51          //-----------------------------------------------------------------------------
+  52          void LCD_PORT_Initial(void)
+  53          { GPIO_Init(P00F,P00_COM0_SETTING);
+  54   1        GPIO_Init(P01F,P01_COM1_SETTING);
+C51 COMPILER V9.01   LCD_DRIVER                                                            07/23/2024 14:43:11 PAGE 2   
+
+  55   1        GPIO_Init(P02F,P02_COM2_SETTING);
+  56   1        GPIO_Init(P03F,P03_COM3_SETTING);//COM 端口
+  57   1      //===============================================
+  58   1        GPIO_Init(P20F,P20_SEG31_SETTING);
+  59   1        GPIO_Init(P21F,P21_SEG30_SETTING);
+  60   1        GPIO_Init(P22F,P22_SEG29_SETTING);
+  61   1        GPIO_Init(P23F,P23_SEG28_SETTING);
+  62   1        GPIO_Init(P24F,P24_SEG27_SETTING);
+  63   1        GPIO_Init(P25F,P25_SEG26_SETTING);
+  64   1        GPIO_Init(P26F,P26_SEG25_SETTING);
+  65   1        GPIO_Init(P27F,P27_SEG24_SETTING);
+  66   1      ////////
+  67   1        GPIO_Init(P17F,P17_SEG23_SETTING);
+  68   1        GPIO_Init(P16F,P16_SEG22_SETTING);
+  69   1        GPIO_Init(P15F,P15_SEG21_SETTING);
+  70   1        GPIO_Init(P14F,P14_SEG20_SETTING);
+  71   1        GPIO_Init(P13F,P13_SEG19_SETTING);
+  72   1        GPIO_Init(P12F,P12_SEG18_SETTING);
+  73   1        GPIO_Init(P11F,P11_SEG17_SETTING);
+  74   1        GPIO_Init(P10F,P10_SEG16_SETTING);
+  75   1      ////////
+  76   1        GPIO_Init(P65F,P65_SEG15_SETTING);
+  77   1        GPIO_Init(P64F,P64_SEG14_SETTING);
+  78   1        GPIO_Init(P63F,P63_SEG13_SETTING);//位码驱动
+  79   1      //===============================================
+  80   1      #if   (SYSCLK_SRC == CK_IRCH)//IRCH
+                LCD_init(LEN_IRCH,DMOD_130_uA,BIAS_1_3,LDRV_7,100);
+              #else
+  83   1        LCD_init(LEN_PLL,DMOD_130_uA,BIAS_1_3,LDRV_6,100);
+  84   1        //7- 1/4  √-×
+  85   1        //6- 1/2  √
+  86   1        //6- 1/3  √
+  87   1        //6- 1/4  √
+  88   1        //5- 1/2  √
+  89   1        //5- 1/3  ×
+  90   1        
+  91   1      #endif
+  92   1      //===============================================
+  93   1        LCD_Chip_RAM_Clear();//清除显示数据
+  94   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    187    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----       6
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

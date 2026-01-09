@@ -1,0 +1,164 @@
+C51 COMPILER V9.01   WT588FXX                                                              07/23/2024 14:43:11 PAGE 1   
+
+
+C51 COMPILER V9.01, COMPILATION OF MODULE WT588FXX
+OBJECT MODULE PLACED IN .\FileOutput\WT588Fxx.obj
+COMPILER INVOKED BY: D:\software\keil\C51\BIN\C51.EXE SourceFile\WT588Fxx.c LARGE OMF2 OPTIMIZE(8,SPEED) BROWSE INCDIR(.
+                    -\ConfigFile;.\CMT2300A) DEBUG PRINT(.\FileOutput\WT588Fxx.lst) TABS(2) OBJECT(.\FileOutput\WT588Fxx.obj)
+
+line level    source
+
+   1          //-----------------------------------------------------------------------------
+   2          //串口发送程序
+   3          //-----------------------------------------------------------------------------
+   4          #include <intrins.h>
+   5          #include "ca51f_config.h"
+   6          #include "ca51f2sfr.h"
+   7          #include "ca51f2xsfr.h"
+   8          #include "gpiodef_f2.h"
+   9          #include "system.h"
+  10          
+  11          #include "flash.h"
+  12          
+  13          #include "DisplayUpdata.H"
+  14          #include "WT588Fxx.h"
+  15          
+  16          /*********************************************************************************************/
+  17          #define GPIO_WT588F_CLK_H   P05 = 1
+  18          #define GPIO_WT588F_CLK_L   P05 = 0
+  19          
+  20          #define GPIO_WT588F_SDA_H P06 = 1
+  21          #define GPIO_WT588F_SDA_L P06 = 0
+  22          
+  23          #define GPIO_WT588F_BUSY_IN   P04
+  24          
+  25          //-----------------------------------------------------------------------------
+  26          
+  27          xdata Uion_Audio  AudioData;
+  28          /*********************************************************************************************/
+  29          // 函数名称  : Line_IIC_WT588F
+  30          // 功能描述  : 实现二线串口通信函数
+  31          // 输入参数  : Data -- 为发送数据.
+  32          // 输出参数  : None.
+  33          // 返回参数  : None.
+  34          /*********************************************************************************************/
+  35          void Line_IIC_WT588F(unsigned char Data)
+  36          {unsigned char Count;
+  37   1      
+  38   1        GPIO_WT588F_CLK_L; // 时钟线
+  39   1        GPIO_WT588F_SDA_H; // 数据线
+  40   1        Delay_100us(50);// 延时 5ms
+  41   1      
+  42   1        for(Count = 0; Count < 8; Count++) {
+  43   2          GPIO_WT588F_CLK_L; // 拉低
+  44   2              if(Data & 0x01) {
+  45   3                  GPIO_WT588F_SDA_H;
+  46   3              } else {
+  47   3                  GPIO_WT588F_SDA_L;
+  48   3              }
+  49   2          Delay_100us(5);// 延时200uS
+  50   2          GPIO_WT588F_CLK_H; // 拉高
+  51   2          Delay_100us(5);// 延时200uS
+  52   2          Data = Data >> 1;
+  53   2        }
+  54   1      }
+C51 COMPILER V9.01   WT588FXX                                                              07/23/2024 14:43:11 PAGE 2   
+
+  55          
+  56          /*********************************************************************************************/
+  57          // 函数名称  : WT588F_Play_Initial
+  58          // 功能描述  : 检查 插入 播放语音
+  59          // 输入参数  : audio_index -- 语音索引.
+  60          // 输出参数  : None.
+  61          // 返回参数  : None.
+  62          /*********************************************************************************************/
+  63          void WT588F_Play_Initial(void)
+  64          { AudioData.AudioSwitch = 0xAA;//默认上电开启语音播放
+  65   1        AudioData.AudioIndex = 0x00;
+  66   1        AudioData.AudioPlayCount = 0;
+  67   1          // 播完语音数据线拉低
+  68   1          GPIO_WT588F_CLK_H;
+  69   1          GPIO_WT588F_SDA_H;
+  70   1      }
+  71          
+  72          /*********************************************************************************************/
+  73          // 函数名称  : WT588F_Play_Index
+  74          // 功能描述  : 检查 插入 播放语音
+  75          // 输入参数  : audio_index -- 语音索引.
+  76          // 输出参数  : None.
+  77          // 返回参数  : None.
+  78          /*********************************************************************************************/
+  79          void WT588F_Play_Index(unsigned char Index)
+  80          { if(AudioData.AudioIndex != Index)
+  81   1        { AudioData.AudioVolume = 0xEF;//音量最大
+  82   2          AudioData.AudioIndex = Index;
+  83   2        #if   (LanguageType == Multilingual)  //多种语言
+                  if((Index >5)&&(Index <16))
+                #else //if  (LanguageType == Chinese) //单独中文语音
+  86   2          if((Index >4)&&(Index <15))
+  87   2        #endif
+  88   2          { AudioData.AudioPlayCount = 248; }
+  89   2          else
+  90   2          { AudioData.AudioPlayCount = 8; }
+  91   2        }//最大允许缓存10条连续语音
+  92   1      }
+  93          /*********************************************************************************************/
+  94          // 函数名称  : WT588F_AutoPlay_Audio
+  95          // 功能描述  : 播放语音
+  96          // 输入参数  : 
+  97          // 输出参数  : None.
+  98          // 返回参数  : None.
+  99          /*********************************************************************************************/
+ 100          void WT588F_AutoPlay_Audio(void)
+ 101          {unsigned char audio_index;
+ 102   1      
+ 103   1        if(Config.Struct.ProductLanguage >3){ Config.Struct.ProductLanguage = 0;  }//默认为英语
+ 104   1      
+ 105   1      #if (LanguageType == Multilingual)  //多种语言
+                Config.Struct.ProductLanguage = 0x00;//测试声音
+              #endif
+ 108   1      
+ 109   1        if(AudioData.AudioSwitch == 0x00){//允许关闭语音播放
+ 110   2          AudioData.AudioPlayCount = 0;
+ 111   2          AudioData.AudioIndex = 0;
+ 112   2        }
+ 113   1      
+ 114   1        if((AudioData.AudioPlayCount >0)&&((AudioData.AudioPlayCount &0x07) ==0))
+ 115   1        { audio_index = (Config.Struct.ProductLanguage * 23);//获得当前语言的，语音首地址 1种语音占 23个播放段
+ 116   2          audio_index += AudioData.AudioIndex;//加上播放地址
+C51 COMPILER V9.01   WT588FXX                                                              07/23/2024 14:43:11 PAGE 3   
+
+ 117   2              if(GPIO_WT588F_BUSY_IN == 1)
+ 118   2          {   Line_IIC_WT588F(0xFE);//停止播放当前语音
+ 119   3                  Delay_100us(30);// 延时 3ms
+ 120   3                  Line_IIC_WT588F(AudioData.AudioVolume);//音量
+ 121   3                  Delay_100us(30);// 延时 3ms
+ 122   3                  Line_IIC_WT588F(0xF3);//连码播放
+ 123   3                  Delay_100us(30);// 延时 3ms
+ 124   3                  Line_IIC_WT588F(audio_index);
+ 125   3      
+ 126   3            AudioData.AudioPlayCount--;//等待播放完成
+ 127   3              }
+ 128   2          }
+ 129   1        //Line_IIC_WT588F(0xAA);//停止播放当前语音
+ 130   1      }
+ 131          
+ 132          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    246    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =      4       3
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

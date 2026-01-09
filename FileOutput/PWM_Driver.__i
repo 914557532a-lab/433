@@ -1,0 +1,1 @@
+"SourceFile\PWM_Driver.C" LARGE OMF2 OPTIMIZE (8,SPEED) BROWSE INCDIR(.\ConfigFile;.\CMT2300A) DEBUG PRINT(.\FileOutput\PWM_Driver.lst) TABS (2) OBJECT(.\FileOutput\PWM_Driver.obj)

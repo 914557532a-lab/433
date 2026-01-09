@@ -1,0 +1,21 @@
+".\FileOutput\STARTUP.obj",
+".\FileOutput\WT588Fxx.obj",
+".\FileOutput\LCD_Driver.obj",
+".\FileOutput\Flash_DATA.obj",
+".\FileOutput\DisplayProcess.obj",
+".\FileOutput\HP_03N_DRV.obj",
+".\FileOutput\KeyEventProcess.obj",
+".\FileOutput\UART_2_ISR .obj",
+".\FileOutput\Time0_Interrupt.obj",
+".\FileOutput\RTC_DRVIER_ISR.obj",
+".\FileOutput\PWM_Driver.obj",
+".\FileOutput\RF_Receiver.obj",
+".\FileOutput\Main.obj",
+".\FileOutput\CMT2300_DRV.obj",
+".\FileOutput\CMT2300_HAL.obj",
+".\FileOutput\Radio.obj" 
+TO ".\FileOutput\HC_K002_PTRF_G2" 
+
+PRINT(".\FileOutput\HC_K002_PTRF_G2.map") REMOVEUNUSED 
+CLASSES (XDATA (X:0x0-X:0xFFF), HDATA (X:0x0-X:0xFFF), CODE (C:0x0-C:0x7FFF), CONST (C:0x0-C:0x7FFF), 
+ECODE (C:0x0-C:0x7FFF), HCONST (C:0x0-C:0x7FFF)) 

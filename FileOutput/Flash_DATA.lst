@@ -1,0 +1,370 @@
+C51 COMPILER V9.01   FLASH_DATA                                                            07/23/2024 14:43:11 PAGE 1   
+
+
+C51 COMPILER V9.01, COMPILATION OF MODULE FLASH_DATA
+OBJECT MODULE PLACED IN .\FileOutput\Flash_DATA.obj
+COMPILER INVOKED BY: D:\software\keil\C51\BIN\C51.EXE SourceFile\Flash_DATA.C LARGE OMF2 OPTIMIZE(8,SPEED) BROWSE INCDIR
+                    -(.\ConfigFile;.\CMT2300A) DEBUG PRINT(.\FileOutput\Flash_DATA.lst) TABS(2) OBJECT(.\FileOutput\Flash_DATA.obj)
+
+line level    source
+
+   1          //-----------------------------------------------------------------------------
+   2          //
+   3          //-----------------------------------------------------------------------------
+   4          #ifndef _FLASH_C_
+   5          #define _FLASH_C_
+   6          //-----------------------------------------------------------------------------
+   7          #include <intrins.h>
+   8          #include "ca51f_config.h"
+   9          #include "ca51f2sfr.h"
+  10          #include "ca51f2xsfr.h"
+  11          #include "gpiodef_f2.h"
+  12          #include "system.h"
+  13          
+  14          #include "flash.h"
+  15          
+  16          #ifdef Enable_CMT2300 //打开双向遥控
+  17            #include "Radio.H"
+  18          #endif
+  19          
+  20          #include "UART2_ISR.h"
+  21          #include "DisplayUpdata.H"
+  22          //-------------------------------------------------------------------
+  23          xdata tpdef_struct_SN Config;//所有数据交换 
+  24          
+  25          //-----------------------------------------------------------------------------
+  26          void Data_Area_Sector_Set(void)
+  27          { PADRD = DATA_FLASH_START;//设置数据区位置
+  28   1      }
+  29          //-----------------------------------------------------------------------------
+  30          //函 数 名：Data_Area_Erase_Sector
+  31          //功能描述：擦除数据区空间的一个扇区
+  32          //输    入：unsigned char SectorNumber  扇区号，范围 0-255
+  33          //-----------------------------------------------------------------------------
+  34          void Data_Area_Sector_Erase(unsigned char SectorNumber)
+  35          {union{
+  36   1        unsigned char Array[2];
+  37   1        unsigned int Address;
+  38   1      }Sector;
+  39   1        EA = 0;//关总中断
+  40   1        Sector.Address = (unsigned int)SectorNumber *0x80;
+  41   1        FSCMD   =   0;
+  42   1        LOCK  = CMD_DATA_AREA_UNLOCK;//数据区解锁
+  43   1        PTSH = Sector.Array[0];//填写扇区地址
+  44   1        PTSL = Sector.Array[1];//填写扇区地址 
+  45   1        FSCMD = CMD_DATA_AREA_ERASE_SECTOR;//执行擦除扇区操作
+  46   1        LOCK  = CMD_FLASH_LOCK;//对FLASH加锁
+  47   1        EA = 1;//开总中断
+  48   1      } 
+  49          //-----------------------------------------------------------------------------
+  50          //函 数 名：Data_Area_Read_Byte
+  51          //功能描述：从FLASH数据区读出一字节数据
+  52          //输    入：unsigned int Address  数据区空间读地址
+  53          //返    回：读取的一字节数据
+  54          //-----------------------------------------------------------------------------
+C51 COMPILER V9.01   FLASH_DATA                                                            07/23/2024 14:43:11 PAGE 2   
+
+  55          unsigned char Data_Area_Read_Byte(unsigned int Address)
+  56          {unsigned char Data_Temp;
+  57   1        EA = 0;//关总中断
+  58   1        FSCMD   =   0;
+  59   1        LOCK  = CMD_DATA_AREA_UNLOCK;//数据区解锁
+  60   1        PTSH = (unsigned char)(Address>>8);//填写高位地址
+  61   1        PTSL = (unsigned char)Address;//填写低位地址
+  62   1        FSCMD = CMD_DATA_AREA_READ;//执行读操作
+  63   1        Data_Temp = FSDAT;
+  64   1        LOCK  = CMD_FLASH_LOCK;//对FLASH加锁
+  65   1        EA = 1;//开总中断
+  66   1        return Data_Temp;
+  67   1      }
+  68          //-----------------------------------------------------------------------------
+  69          //函 数 名：Data_Area_Mass_Read
+  70          //功能描述：从FLASH数据区批量读出数据
+  71          //输    入：unsigned int Address  数据区空间读起始地址
+  72          //      unsigned char *pData  数据指针，指向读出数据缓存数组
+  73          //      unsigned char Length  读数据长度
+  74          //-----------------------------------------------------------------------------
+  75          void Data_Area_Mass_Read(unsigned int Address,unsigned char *pData,unsigned char Length)
+  76          {unsigned int Count;
+  77   1        EA = 0;//关总中断
+  78   1        FSCMD   =   0;
+  79   1        LOCK  = CMD_DATA_AREA_UNLOCK;//数据区解锁
+  80   1        PTSH = (unsigned char)(Address>>8);//填写高位地址
+  81   1        PTSL = (unsigned char)Address;//填写低位地址
+  82   1        FSCMD = CMD_DATA_AREA_READ;//执行读操作
+  83   1        for(Count = 0;Count <Length; Count++)
+  84   1        { *pData++ = FSDAT;   }
+  85   1        LOCK  = CMD_FLASH_LOCK;//对FLASH加锁
+  86   1        EA = 1;//开总中断
+  87   1      }
+  88          //-----------------------------------------------------------------------------
+  89          //函 数 名：Data_Area_Write_Byte
+  90          //功能描述：向FLASH数据区写入一个字节数据
+  91          //输    入：unsigned int Address  数据区空间写入地址
+  92          //      unsigned char Data    写入数据
+  93          //-----------------------------------------------------------------------------
+  94          void Data_Area_Write_Byte(unsigned int Address,unsigned char Data)
+  95          { EA = 0;//关总中断
+  96   1        FSCMD   =   0;
+  97   1        LOCK  = CMD_DATA_AREA_UNLOCK;//数据区解锁
+  98   1        PTSH = (unsigned char)(Address>>8);//填写高位地址
+  99   1        PTSL = (unsigned char)Address;//填写低位地址
+ 100   1        FSCMD = CMD_DATA_AREA_WIRTE;//执行写操作
+ 101   1        FSDAT = Data;//装载数据
+ 102   1        LOCK  = CMD_FLASH_LOCK;//对FLASH加锁
+ 103   1        EA = 1;//开总中断
+ 104   1      }/////////////////////////////////////////////////////////////////////////////////////////
+ 105          #pragma optimize(0)
+ 106          void Data_Area_ReadWrite(unsigned char Type,unsigned char Sector,unsigned char *DataIndex,unsigned char Da
+             -taLenght)
+ 107          {signed int DATA_ADDRESS = (SECTOR_SIZE *Sector) +ROM_ADDR_OFFSET;//设置EEPROM 存储区,起始地址
+ 108   1       signed int ROM_ADDR_INC = DATA_ADDRESS;//备份起始地址
+ 109   1       signed int ROM_ORG_ADDRES = DATA_ADDRESS;//备份起始地址
+ 110   1       signed int ROM_END_ADDRES = (ROM_ORG_ADDRES +SECTOR_SIZE);//计算结束地址
+ 111   1       unsigned char Count; unsigned char StateIndex ; unsigned char *OriginDataIndex = DataIndex;
+ 112   1       //-------------------------------------------------------------
+ 113   1        Data_Area_Sector_Set();//设置数据区位置
+ 114   1       //-------------------------------------------------------------
+ 115   1        for(StateIndex=0x00;StateIndex<0x07;)
+C51 COMPILER V9.01   FLASH_DATA                                                            07/23/2024 14:43:11 PAGE 3   
+
+ 116   1        { switch(StateIndex)
+ 117   2          {case 0x06://读取ROM中的数据
+ 118   3              DataIndex = OriginDataIndex;//恢复数据区地址
+ 119   3              Data_Area_Mass_Read(DATA_ADDRESS,DataIndex,DataLenght);
+ 120   3              //----------------------------------------------
+ 121   3              StateIndex = 0x07;  //读完成 退出
+ 122   3            break;
+ 123   3           case 0x05://写数据时地址溢出,执行擦除操作
+ 124   3           ADDRES_OVER_PROCESS://地址溢出
+ 125   3              Data_Area_Sector_Erase(0);//擦除一个扇区，128字节
+ 126   3              Data_Area_Sector_Erase(1);//擦除一个扇区，128字节
+ 127   3              DATA_ADDRESS = ROM_ORG_ADDRES;//指向EEPROM 起始地址
+ 128   3              DataIndex = OriginDataIndex;//恢复数据区地址
+ 129   3           case 0x04://写数据到ROM存储区
+ 130   3              for(Count=0x00;Count<DataLenght;Count++)//闪存数据拷贝
+ 131   3              { Data_Area_Write_Byte(DATA_ADDRESS++,*DataIndex++);
+ 132   4                if(DATA_ADDRESS >= ROM_END_ADDRES)//地址溢出
+ 133   4                { goto ADDRES_OVER_PROCESS; }////擦除从写整个区
+ 134   4              }
+ 135   3              //----------------------------------------------
+ 136   3              DATA_ADDRESS -= DataLenght;//写后重新读出，后退一个字段
+ 137   3              StateIndex = 0x06;//初始化写入后，要再次读出初始值
+ 138   3            break;
+ 139   3           case 0x03://数据定位有效
+ 140   3              if(Type == READ_DATA)//若是读取数据,则需后退整个数据区长度
+ 141   3              { if(DATA_ADDRESS >= ROM_END_ADDRES)//地址溢出
+ 142   4                { if((DATA_ADDRESS -DataLenght) >(ROM_END_ADDRES -DataLenght))
+ 143   5                  { DATA_ADDRESS -= DataLenght;   }//读取过程会溢出，后退2个连续区域
+ 144   5                }
+ 145   4                DATA_ADDRESS -= DataLenght;//不会溢出后退 1个连续区域
+ 146   4                StateIndex = 0x06;//转入 读取 ROM 中的用户数据
+ 147   4              }
+ 148   3              else///////////////////若是写入数据，则需要擦除后再写
+ 149   3              { if(DATA_ADDRESS >= ROM_END_ADDRES)//地址溢出
+ 150   4                { StateIndex = 0x05;    }//执行擦除操作
+ 151   4                else
+ 152   4                { StateIndex = 0x04;    }//转入 执行用户参数写入
+ 153   4              }
+ 154   3              //--------------------------------------------------------
+ 155   3              DATA_ADDRESS -= 2;//后退查找0xFF，引起地址偏移
+ 156   3              if(DATA_ADDRESS < ROM_ORG_ADDRES){  DATA_ADDRESS = ROM_ORG_ADDRES;  }//防止溢出
+ 157   3            break;
+ 158   3           case 0x02://第二个 0xFF
+ 159   3           case 0x01://第一个 0xFF
+ 160   3              if(DATA_ADDRESS >= ROM_END_ADDRES)/////没有剩余空间了
+ 161   3              { StateIndex = 0x03;//读操作，则结束定位查找数据过程
+ 162   4                DATA_ADDRESS += 1;//地址偏移补偿
+ 163   4                if(Type == WRITE_DATA)//写操作，擦除选定的Flash块
+ 164   4                { StateIndex = 0x05;  }
+ 165   4              }
+ 166   3              else
+ 167   3              { if(Data_Area_Read_Byte(DATA_ADDRESS++) == 0xFF)
+ 168   4                { StateIndex++; }//2次检测到 0xFF，当前区域为空，可以正常操作
+ 169   4                else
+ 170   4                { StateIndex = 0x00;//否则检索不成功，重来
+ 171   5                  ROM_ADDR_INC += DataLenght;//指向下一的数据区
+ 172   5                  DATA_ADDRESS = ROM_ADDR_INC;//给出访问的数据地址
+ 173   5                }
+ 174   4              }
+ 175   3            break;
+ 176   3           default:
+ 177   3              if(DATA_ADDRESS >= ROM_END_ADDRES)/////没有剩余空间了
+C51 COMPILER V9.01   FLASH_DATA                                                            07/23/2024 14:43:11 PAGE 4   
+
+ 178   3              { StateIndex = 0x03;//读操作，则结束定位查找数据过程
+ 179   4                DATA_ADDRESS += 2;//地址偏移补偿
+ 180   4                if(Type == WRITE_DATA)//写操作，擦除选定的Flash块
+ 181   4                { StateIndex = 0x05;  }
+ 182   4              }
+ 183   3              else
+ 184   3              { if(Data_Area_Read_Byte(DATA_ADDRESS++) == 0xFF)//则当前地址没数据
+ 185   4                { StateIndex = 0x02;    }//寻找第二个 0xFF
+ 186   4                else//当前闪存地址 !=0xFF,有存储过数据，指向下一区域
+ 187   4                { ROM_ADDR_INC += DataLenght;//指向下一的数据区
+ 188   5                  DATA_ADDRESS = ROM_ADDR_INC;//给出访问的数据地址
+ 189   5                }
+ 190   4              }
+ 191   3            break;
+ 192   3          }
+ 193   2        }
+ 194   1      }
+ 195          //-----------------------------------------------------------------------------
+ 196          //函 数 名：  GetChipID
+ 197          //功能描述：  从芯片读出芯片识别码(每个芯片都有唯一的识别码）
+ 198          //-----------------------------------------------------------------------------
+ 199          unsigned long GetChipID(void)
+ 200          {union{
+ 201   1        unsigned char Array[4];
+ 202   1        unsigned long ID;
+ 203   1      }Chip;
+ 204   1      //------------------------------------------
+ 205   1        EA = 0;//关总中断
+ 206   1        LOCK  = 0x2B;
+ 207   1        FSCMD = 0x80;
+ 208   1        PTSH = 0x01;
+ 209   1        PTSL = 0x00;
+ 210   1        FSCMD = 0x81;
+ 211   1        Chip.Array[0] = FSDAT;
+ 212   1        Chip.Array[1] = FSDAT;
+ 213   1        Chip.Array[2] = FSDAT;
+ 214   1        Chip.Array[3] = FSDAT;
+ 215   1        FSCMD = 0;
+ 216   1        LOCK = 0xAA;
+ 217   1        EA = 1;//开总中断
+ 218   1        return Chip.ID;
+ 219   1      }
+ 220          
+ 221          #endif 
+ 222          //-----------------------------------------------------------------------------
+ 223          #define Config_5KW  //按照5KW 参数运行
+ 224          //-----------------------------------------------------------------------------
+ 225          unsigned char code RunDataConfig[CONFIGDATA_LENGHT] =
+ 226          {// 0x00,0x00,0x00,0x00,//检查初始化的标志
+ 227           //--------------------------------------------------
+ 228            0x16,0x88,  //管理密码 --5
+ 229            //-----------------------------------------------
+ 230            0x00,0x00,0x00,0x00,//备用(遥控码地址) --9
+ 231            //-----------------------------------------------
+ 232            0x00,0x76,  //制造商 ID 默认 0 == 兼容原公司产品
+ 233            0x02,   //产品类型 ID == 风暖1 水暖2 其他待定
+ 234            0x01,   //产品语音，语言播报类型
+ 235            //-----------------------------------------------
+ 236            0x01,   //燃油类型 1柴油，2汽油，3甲醛
+ 237            0x2D,   //加热重启温度 45 ℃
+ 238            0x4B,   //加热停止温度 75 ℃  --13
+ 239            //-----------------------------------------------
+C51 COMPILER V9.01   FLASH_DATA                                                            07/23/2024 14:43:11 PAGE 5   
+
+ 240            0x12,   //最小泵油量 1.0Hz -- 6.5Hz (默认 1.8Hz)
+ 241            0x38,   //最大泵油量 4.0Hz -- 9.0Hz (默认 5.6Hz) --15
+ 242            0x0B,0xB8,  //最小风速  3000 r/min(起始转速) --17
+ 243            0x21,0xCA,  //最大风速  8650 r/min(结束转速) --19
+ 244            0x78,   //工作电压 (默认24V)  , 0x78 == 120, 0xF0 == 240
+ 245            0x05,   //点火塞功率  点火塞默认功率 85W  误差 2% --21
+ 246            //-----------------------------------------------
+ 247            0x01,   //1 =档位控温方式，2 = 时间控温方式 ，3 保留
+ 248            0x06,   //控温分9档，每次加 1 档
+ 249            //-----------------------------------------------
+ 250            0x02    //加热状态类型 == 1 单次加热，== 2 循环加热
+ 251          };
+ 252          //==================================================================================
+ 253          void RunData_Copy(unsigned char *Purpose,unsigned char *Source,unsigned char Seed,unsigned char Proof,unsi
+             -gned char Lenght)
+ 254          {unsigned char Count;unsigned char SeedData = Seed ^Proof;//生产种子码
+ 255   1        //----------------------------------------------------------
+ 256   1        if((SeedData ==0x00)||(SeedData == 0xFF))
+ 257   1        { SeedData = (SeedData |0x88) >>0x01;   }//规避 0 和 FF 值
+ 258   1        //----------------------------------------------------------
+ 259   1        for(Count = 0x00;Count < Lenght;Count++)//还原加密数据
+ 260   1        { *Purpose++ = *Source++ ^SeedData;   }
+ 261   1      }
+ 262          //-----------------------------------------------------------------------------
+ 263          void RunDataUpdate(void)
+ 264          { CRC16_CHECK(&Config.Data[CHIP_ID_LENGHT],CONFIGDATA_LENGHT);//生成校验码
+ 265   1        if(Config.Struct.CRC_DATA.DATA != CRC_DATA.CRC_REG)
+ 266   1        { Config.Struct.CRC_DATA.DATA = CRC_DATA.CRC_REG;//存储校验
+ 267   2          Data_Area_ReadWrite(WRITE_DATA,0,&Config.Data[0],ROM_DATA_1_LENGHT);//设定初值
+ 268   2        }
+ 269   1      }
+ 270          //-----------------------------------------------------------------------------
+ 271          //-----------------------------------------------------------------------------
+ 272          void RunData_Initial(void)
+ 273          {union{
+ 274   1        unsigned char Array[4];
+ 275   1        unsigned long Data;
+ 276   1      }Chip_ID;
+ 277   1      unsigned char Loop;
+ 278   1      //-------------------------------------------------------------------
+ 279   1        Chip_ID.Data = GetChipID();//获取校验ID数据
+ 280   1        if((Chip_ID.Data == 0x00000000)||(Chip_ID.Data == 0xFFFFFFFF))
+ 281   1        { Chip_ID.Data = 0x20220919;    }//没有ID 写入时标信息
+ 282   1      //-------------------------------------------------------------------
+ 283   1      ReCheckInitData://初始化后重新检查
+ 284   1        Data_Area_ReadWrite(READ_DATA,0,&Config.Data[0],ROM_DATA_1_LENGHT);
+ 285   1      //-------------------------------------------------------------------
+ 286   1        if((Chip_ID.Array[0] != Config.Struct.Chip_ID_0)||(Chip_ID.Array[1] != Config.Struct.Chip_ID_1)\
+ 287   1         ||(Chip_ID.Array[2] != Config.Struct.Chip_ID_2))//校验数据是否被初始化过
+ 288   1        { Config.Struct.Chip_ID_0 = Chip_ID.Array[0]; Config.Struct.Chip_ID_1 = Chip_ID.Array[1];
+ 289   2          Config.Struct.Chip_ID_2 = Chip_ID.Array[2];//设置ID号
+ 290   2          //-----------------------------------------------------------
+ 291   2          for(Loop=0;Loop<CONFIGDATA_LENGHT;Loop++)   //调试需关闭
+ 292   2          { Config.Data[CHIP_ID_LENGHT +Loop] = RunDataConfig[Loop];    }//重置运行参数
+ 293   2          //-----------------------------------------------------------
+ 294   2          RunDataUpdate();//计算校验码，并存储结果
+ 295   2          //-----------------------------------------------------------
+ 296   2          goto ReCheckInitData;
+ 297   2        }
+ 298   1        //----------------------------------------------------------
+ 299   1        SystemRunIndex = 0x00;//运行状态
+ 300   1        SystemStateHold = SystemRunState;
+C51 COMPILER V9.01   FLASH_DATA                                                            07/23/2024 14:43:11 PAGE 6   
+
+ 301   1        SystemStateTime = 0x00;
+ 302   1        UART_ERROR_Time = 30;//通信错误故障
+ 303   1        //----------------------------------------------------------
+ 304   1        //Config.Struct.Password.DATA;//读取初始密码
+ 305   1        //----------------------------------------------------------
+ 306   1        ErrorIndex = 0x00;
+ 307   1      
+ 308   1        RunVoltage.Data = 0x0000;
+ 309   1        Fan_Vot.Data = 0x0000;
+ 310   1        RotateSpeed.Data = 0x0000;
+ 311   1      
+ 312   1        Ignition_Vot.DutyCycle = 0x0000;
+ 313   1        Ignition_CUR.Current = 0x0000;
+ 314   1      
+ 315   1        OilPumpFrequency = 0x00;
+ 316   1      
+ 317   1        SW.Temperature = 0x0000;
+ 318   1        HY.Temperature = 0x0000;
+ 319   1        WaterPump_CUR.Data = 0x0000;
+ 320   1      //----------------------------------------------------------
+ 321   1        RemainingWorkingTime = 0x00;//剩余运行时间
+ 322   1      
+ 323   1      //----------------------------------------------------------
+ 324   1      #ifdef Enable_CMT2300 //打开双向遥控
+ 325   1        CMT2300_PairingTime = 0x00;//遥控地址配对时间
+ 326   1        CMT2300_T_Array[0] = 0xAA;//标识
+ 327   1        CMT2300_T_Array[2] = 0x00;//功能码
+ 328   1      #endif
+ 329   1      }
+ 330          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1890    ----
+   CONSTANT SIZE    =     26    ----
+   XDATA SIZE       =     71       8
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

@@ -1,0 +1,783 @@
+C51 COMPILER V9.01   CMT2300_HAL                                                           07/23/2024 14:43:12 PAGE 1   
+
+
+C51 COMPILER V9.01, COMPILATION OF MODULE CMT2300_HAL
+OBJECT MODULE PLACED IN .\FileOutput\CMT2300_HAL.obj
+COMPILER INVOKED BY: D:\software\keil\C51\BIN\C51.EXE CMT2300A\CMT2300_HAL.C LARGE OMF2 OPTIMIZE(8,SPEED) BROWSE INCDIR(
+                    -.\ConfigFile;.\CMT2300A) DEBUG PRINT(.\FileOutput\CMT2300_HAL.lst) TABS(2) OBJECT(.\FileOutput\CMT2300_HAL.obj)
+
+line level    source
+
+   1          /*
+   2           * THE FOLLOWING FIRMWARE IS PROVIDED: (1) "AS IS" WITH NO WARRANTY; AND
+   3           * (2)TO ENABLE ACCESS TO CODING INFORMATION TO GUIDE AND FACILITATE CUSTOMER.
+   4           * CONSEQUENTLY, CMOSTEK SHALL NOT BE HELD LIABLE FOR ANY DIRECT, INDIRECT OR
+   5           * CONSEQUENTIAL DAMAGES WITH RESPECT TO ANY CLAIMS ARISING FROM THE CONTENT
+   6           * OF SUCH FIRMWARE AND/OR THE USE MADE BY CUSTOMERS OF THE CODING INFORMATION
+   7           * CONTAINED HEREIN IN CONNECTION WITH THEIR PRODUCTS.
+   8           *
+   9           * Copyright (C) CMOSTEK SZ.
+  10           */
+  11          //=========================================================
+  12          #include <intrins.h>
+  13          #include "ca51f_config.h"
+  14          #include "ca51f2sfr.h"
+  15          #include "ca51f2xsfr.h"
+  16          #include "gpiodef_f2.h"
+  17          #include "system.h"
+  18          //=========================================================
+  19          #include "CMT2300_DRV.H"
+  20          #include "CMT2300A_defs.H"
+  21          
+  22          /*! ********************************************************
+  23          * @name    CMT2300A_SoftReset
+  24          * @desc    Soft reset.
+  25          * *********************************************************/
+  26          void CMT2300A_SoftReset(void)
+  27          {
+  28   1          CMT2300A_WriteReg(0x7F, 0xFF);
+  29   1      }
+  30          
+  31          /*! ********************************************************
+  32          * @name    CMT2300A_GetChipStatus
+  33          * @desc    Get the chip status.
+  34          * @return
+  35          *          CMT2300A_STA_PUP
+  36          *          CMT2300A_STA_SLEEP
+  37          *          CMT2300A_STA_STBY
+  38          *          CMT2300A_STA_RFS
+  39          *          CMT2300A_STA_TFS
+  40          *          CMT2300A_STA_RX
+  41          *          CMT2300A_STA_TX
+  42          *          CMT2300A_STA_EEPROM
+  43          *          CMT2300A_STA_ERROR
+  44          *          CMT2300A_STA_CAL
+  45          * *********************************************************/
+  46          /*unsigned char CMT2300A_GetChipStatus(void)
+  47          {
+  48              return  CMT2300A_ReadReg(CMT2300A_CUS_MODE_STA) & CMT2300A_MASK_CHIP_MODE_STA;
+  49          }*/
+  50          
+  51          /*! ********************************************************
+  52          * @name    CMT2300A_GoSleep
+  53          * @desc    Entry SLEEP mode.
+  54          * @return  TRUE or FALSE
+C51 COMPILER V9.01   CMT2300_HAL                                                           07/23/2024 14:43:12 PAGE 2   
+
+  55          * *********************************************************/
+  56          void CMT2300A_GoSleep(void)
+  57          { unsigned int Count = 10000;
+  58   1        CMT2300A_WriteReg(CMT2300A_CUS_MODE_CTL, CMT2300A_GO_SLEEP);
+  59   1        do{
+  60   2          if((CMT2300A_ReadReg(CMT2300A_CUS_MODE_STA) &0x0F) == CMT2300A_STA_SLEEP)
+  61   2          { Count = 0x00; }
+  62   2        }while(Count--);
+  63   1      }
+  64          
+  65          /*! ********************************************************
+  66          * @name    CMT2300A_GoStby
+  67          * @desc    Entry Sleep mode.
+  68          * @return  TRUE or FALSE
+  69          * *********************************************************/
+  70          void CMT2300A_GoStby(void)
+  71          { unsigned int Count = 10000;
+  72   1          CMT2300A_WriteReg(CMT2300A_CUS_MODE_CTL, CMT2300A_GO_STBY);
+  73   1        do{
+  74   2          if((CMT2300A_ReadReg(CMT2300A_CUS_MODE_STA) &0x0F) == CMT2300A_STA_STBY)
+  75   2          { Count = 0x00; }
+  76   2        }while(Count--);
+  77   1      }
+  78          
+  79          /*! ********************************************************
+  80          * @name    CMT2300A_GoTFS
+  81          * @desc    Entry TFS mode.
+  82          * @return  TRUE or FALSE
+  83          * *********************************************************/
+  84          void CMT2300A_GoTFS(void)
+  85          { unsigned int Count = 10000;
+  86   1        CMT2300A_WriteReg(CMT2300A_CUS_MODE_CTL, CMT2300A_GO_TFS);
+  87   1        do{
+  88   2          if((CMT2300A_ReadReg(CMT2300A_CUS_MODE_STA) &0x0F) == CMT2300A_STA_TFS)
+  89   2          { Count = 0x00; }
+  90   2        }while(Count--);
+  91   1      }
+  92          
+  93          /*! ********************************************************
+  94          * @name    CMT2300A_GoRFS
+  95          * @desc    Entry RFS mode.
+  96          * @return  TRUE or FALSE
+  97          * *********************************************************/
+  98          void CMT2300A_GoRFS(void)
+  99          { unsigned int Count = 10000;
+ 100   1          CMT2300A_WriteReg(CMT2300A_CUS_MODE_CTL, CMT2300A_GO_RFS);
+ 101   1        do{
+ 102   2          if((CMT2300A_ReadReg(CMT2300A_CUS_MODE_STA) &0x0F) == CMT2300A_STA_RFS)
+ 103   2          { Count = 0x00; }
+ 104   2        }while(Count--);
+ 105   1      }
+ 106          /*! ********************************************************
+ 107          * @name    CMT2300A_GoTx
+ 108          * @desc    Entry Tx mode.
+ 109          * @return  TRUE or FALSE
+ 110          //* *********************************************************/
+ 111          void CMT2300A_GoTx(void)
+ 112          { unsigned int Count = 10000;
+ 113   1          CMT2300A_WriteReg(CMT2300A_CUS_MODE_CTL, CMT2300A_GO_TX);
+ 114   1        do{
+ 115   2          if((CMT2300A_ReadReg(CMT2300A_CUS_MODE_STA) &0x0F) == CMT2300A_STA_TX)
+ 116   2          { Count = 0x00; }
+C51 COMPILER V9.01   CMT2300_HAL                                                           07/23/2024 14:43:12 PAGE 3   
+
+ 117   2        }while(Count--);
+ 118   1      }
+ 119          
+ 120          /*! ********************************************************
+ 121          * @name    CMT2300A_GoRx
+ 122          * @desc    Entry Rx mode.
+ 123          * @return  TRUE or FALSE
+ 124          * *********************************************************/
+ 125          void CMT2300A_GoRx(void)
+ 126          { unsigned int Count = 10000;
+ 127   1         CMT2300A_WriteReg(CMT2300A_CUS_MODE_CTL, CMT2300A_GO_RX);
+ 128   1        do{
+ 129   2          if((CMT2300A_ReadReg(CMT2300A_CUS_MODE_STA) &0x0F) == CMT2300A_STA_RX)
+ 130   2          { Count = 0x00; }
+ 131   2        }while(Count--);
+ 132   1      }
+ 133          /*! ********************************************************
+ 134          * @name    CMT2300A_ConfigGpio
+ 135          * @desc    Config GPIO pins mode.
+ 136          * @param   nGpioSel: GPIO1_SEL | GPIO2_SEL | GPIO3_SEL | GPIO4_SEL
+ 137          *          GPIO1_SEL:
+ 138          *            CMT2300A_GPIO1_SEL_DOUT/DIN 
+ 139          *            CMT2300A_GPIO1_SEL_INT1
+ 140          *            CMT2300A_GPIO1_SEL_INT2 
+ 141          *            CMT2300A_GPIO1_SEL_DCLK
+ 142          *
+ 143          *          GPIO2_SEL:
+ 144          *            CMT2300A_GPIO2_SEL_INT1 
+ 145          *            CMT2300A_GPIO2_SEL_INT2
+ 146          *            CMT2300A_GPIO2_SEL_DOUT/DIN 
+ 147          *            CMT2300A_GPIO2_SEL_DCLK
+ 148          *
+ 149          *          GPIO3_SEL:
+ 150          *            CMT2300A_GPIO3_SEL_CLKO 
+ 151          *            CMT2300A_GPIO3_SEL_DOUT/DIN
+ 152          *            CMT2300A_GPIO3_SEL_INT2 
+ 153          *            CMT2300A_GPIO3_SEL_DCLK
+ 154          *
+ 155          *          GPIO4_SEL:
+ 156          *            CMT2300A_GPIO4_SEL_RSTIN 
+ 157          *            CMT2300A_GPIO4_SEL_INT1
+ 158          *            CMT2300A_GPIO4_SEL_DOUT 
+ 159          *            CMT2300A_GPIO4_SEL_DCLK
+ 160          * *********************************************************/
+ 161          void CMT2300A_ConfigGpio(unsigned char nGpioSel)
+ 162          {
+ 163   1          CMT2300A_WriteReg(CMT2300A_CUS_IO_SEL, nGpioSel);
+ 164   1      }
+ 165          
+ 166          /*! ********************************************************
+ 167          * @name    CMT2300A_ConfigInterrupt
+ 168          * @desc    Config interrupt on INT1 and INT2.
+ 169          * @param   nInt1Sel, nInt2Sel
+ 170          *            CMT2300A_INT_SEL_RX_ACTIVE
+ 171          *            CMT2300A_INT_SEL_TX_ACTIVE
+ 172          *            CMT2300A_INT_SEL_RSSI_VLD
+ 173          *            CMT2300A_INT_SEL_PREAM_OK
+ 174          *            CMT2300A_INT_SEL_SYNC_OK
+ 175          *            CMT2300A_INT_SEL_NODE_OK
+ 176          *            CMT2300A_INT_SEL_CRC_OK
+ 177          *            CMT2300A_INT_SEL_PKT_OK
+ 178          *            CMT2300A_INT_SEL_SL_TMO
+C51 COMPILER V9.01   CMT2300_HAL                                                           07/23/2024 14:43:12 PAGE 4   
+
+ 179          *            CMT2300A_INT_SEL_RX_TMO
+ 180          *            CMT2300A_INT_SEL_TX_DONE
+ 181          *            CMT2300A_INT_SEL_RX_FIFO_NMTY
+ 182          *            CMT2300A_INT_SEL_RX_FIFO_TH
+ 183          *            CMT2300A_INT_SEL_RX_FIFO_FULL
+ 184          *            CMT2300A_INT_SEL_RX_FIFO_WBYTE
+ 185          *            CMT2300A_INT_SEL_RX_FIFO_OVF
+ 186          *            CMT2300A_INT_SEL_TX_FIFO_NMTY
+ 187          *            CMT2300A_INT_SEL_TX_FIFO_TH
+ 188          *            CMT2300A_INT_SEL_TX_FIFO_FULL
+ 189          *            CMT2300A_INT_SEL_STATE_IS_STBY
+ 190          *            CMT2300A_INT_SEL_STATE_IS_FS
+ 191          *            CMT2300A_INT_SEL_STATE_IS_RX
+ 192          *            CMT2300A_INT_SEL_STATE_IS_TX
+ 193          *            CMT2300A_INT_SEL_LED
+ 194          *            CMT2300A_INT_SEL_TRX_ACTIVE
+ 195          *            CMT2300A_INT_SEL_PKT_DONE
+ 196          * *********************************************************/
+ 197          void CMT2300A_ConfigInterrupt(unsigned char nInt1Sel, unsigned char nInt2Sel)
+ 198          {
+ 199   1          nInt1Sel &= CMT2300A_MASK_INT1_SEL;
+ 200   1          nInt1Sel |= (~CMT2300A_MASK_INT1_SEL) & CMT2300A_ReadReg(CMT2300A_CUS_INT1_CTL);
+ 201   1          CMT2300A_WriteReg(CMT2300A_CUS_INT1_CTL, nInt1Sel);
+ 202   1      
+ 203   1          nInt2Sel &= CMT2300A_MASK_INT2_SEL;
+ 204   1          nInt2Sel |= (~CMT2300A_MASK_INT2_SEL) & CMT2300A_ReadReg(CMT2300A_CUS_INT2_CTL);
+ 205   1          CMT2300A_WriteReg(CMT2300A_CUS_INT2_CTL, nInt2Sel);
+ 206   1      }
+ 207          
+ 208          /*! ********************************************************
+ 209          * @name    CMT2300A_SetInterruptPolar
+ 210          * @desc    Set the polarity of the interrupt.
+ 211          * @param   bEnable(TRUE): active-high (default)
+ 212          *          bEnable(FALSE): active-low
+ 213          * *********************************************************/
+ 214          /*void CMT2300A_SetInterruptPolar(unsigned char bActiveHigh)
+ 215          {
+ 216              unsigned char tmp = CMT2300A_ReadReg(CMT2300A_CUS_INT1_CTL);
+ 217          
+ 218              if(bActiveHigh != 0)
+ 219            { tmp &= ~CMT2300A_MASK_INT_POLAR;  }
+ 220              else
+ 221            { tmp |= CMT2300A_MASK_INT_POLAR;   }
+ 222          
+ 223              CMT2300A_WriteReg(CMT2300A_CUS_INT1_CTL, tmp);
+ 224          }*/
+ 225          
+ 226          /*! ********************************************************
+ 227          * @name    CMT2300A_SetFifoThreshold
+ 228          * @desc    Set FIFO threshold.
+ 229          * @param   nFifoThreshold
+ 230          * *********************************************************/
+ 231          /*void CMT2300A_SetFifoThreshold(unsigned char nFifoThreshold)
+ 232          { 
+ 233              unsigned char tmp = CMT2300A_ReadReg(CMT2300A_CUS_PKT29);
+ 234              
+ 235              tmp &= ~CMT2300A_MASK_FIFO_TH;
+ 236              tmp |= nFifoThreshold & CMT2300A_MASK_FIFO_TH;
+ 237              
+ 238              CMT2300A_WriteReg(CMT2300A_CUS_PKT29, tmp);
+ 239          }*/
+ 240          
+C51 COMPILER V9.01   CMT2300_HAL                                                           07/23/2024 14:43:12 PAGE 5   
+
+ 241          /*! ********************************************************
+ 242          * @name    CMT2300A_EnableAntennaSwitch
+ 243          * @desc    Enable antenna switch, output TX_ACTIVE/RX_ACTIVE
+ 244          *          via GPIO1/GPIO2.
+ 245          * @param   nMode 
+ 246          *            0: RF_SWT1_EN=1, RF_SWT2_EN=0
+ 247          *               GPIO1: RX_ACTIVE, GPIO2: TX_ACTIVE
+ 248          *            1: RF_SWT1_EN=0, RF_SWT2_EN=1
+ 249          *               GPIO1: RX_ACTIVE, GPIO2: ~RX_ACTIVE
+ 250          * *********************************************************/
+ 251          /*void CMT2300A_EnableAntennaSwitch(unsigned char nMode)
+ 252          {
+ 253              unsigned char tmp = CMT2300A_ReadReg(CMT2300A_CUS_INT1_CTL);
+ 254          
+ 255              if(0 == nMode) {
+ 256                  tmp |= CMT2300A_MASK_RF_SWT1_EN;
+ 257                  tmp &= ~CMT2300A_MASK_RF_SWT2_EN;
+ 258              }
+ 259              else if(1 == nMode) {
+ 260                  tmp &= ~CMT2300A_MASK_RF_SWT1_EN;
+ 261                  tmp |= CMT2300A_MASK_RF_SWT2_EN;
+ 262              }
+ 263          
+ 264              CMT2300A_WriteReg(CMT2300A_CUS_INT1_CTL, tmp);
+ 265          }*/
+ 266          
+ 267          /*! ********************************************************
+ 268          * @name    CMT2300A_EnableInterrupt
+ 269          * @desc    Enable interrupt.
+ 270          * @param   nEnable 
+ 271          *            CMT2300A_MASK_SL_TMO_EN   |
+ 272          *            CMT2300A_MASK_RX_TMO_EN   |
+ 273          *            CMT2300A_MASK_TX_DONE_EN  |
+ 274          *            CMT2300A_MASK_PREAM_OK_EN |
+ 275          *            CMT2300A_MASK_SYNC_OK_EN  |
+ 276          *            CMT2300A_MASK_NODE_OK_EN  |
+ 277          *            CMT2300A_MASK_CRC_OK_EN   |
+ 278          *            CMT2300A_MASK_PKT_DONE_EN
+ 279          * *********************************************************/
+ 280          void CMT2300A_EnableInterrupt(unsigned char nEnable)
+ 281          {
+ 282   1          CMT2300A_WriteReg(CMT2300A_CUS_INT_EN, nEnable);
+ 283   1      }
+ 284          
+ 285          /*! ********************************************************
+ 286          * @name    CMT2300A_EnableRxFifoAutoClear
+ 287          * @desc    Auto clear Rx FIFO before entry Rx mode.
+ 288          * @param   bEnable(TRUE): Enable it(default)
+ 289          *          bEnable(FALSE): Disable it
+ 290          * *********************************************************/
+ 291          /*void CMT2300A_EnableRxFifoAutoClear(unsigned char bEnable)
+ 292          {
+ 293              unsigned char tmp = CMT2300A_ReadReg(CMT2300A_CUS_FIFO_CTL);
+ 294          
+ 295              if(bEnable != 0)
+ 296            { tmp &= ~CMT2300A_MASK_FIFO_AUTO_CLR_DIS;  }
+ 297              else
+ 298            { tmp |= CMT2300A_MASK_FIFO_AUTO_CLR_DIS;   }
+ 299          
+ 300              CMT2300A_WriteReg(CMT2300A_CUS_FIFO_CTL, tmp);
+ 301          }*/
+ 302          
+C51 COMPILER V9.01   CMT2300_HAL                                                           07/23/2024 14:43:12 PAGE 6   
+
+ 303          /*! ********************************************************
+ 304          * @name    CMT2300A_EnableFifoMerge
+ 305          * @desc    Enable FIFO merge.
+ 306          * @param   bEnable(TRUE): use a single 64-byte FIFO for either Tx or Rx
+ 307          *          bEnable(FALSE): use a 32-byte FIFO for Tx and another 32-byte FIFO for Rx(default)
+ 308          * *********************************************************/
+ 309          /*void CMT2300A_EnableFifoMerge(unsigned char bEnable)
+ 310          {
+ 311              unsigned char tmp = CMT2300A_ReadReg(CMT2300A_CUS_FIFO_CTL);
+ 312          
+ 313              if(bEnable != 0)
+ 314            { tmp |= CMT2300A_MASK_FIFO_MERGE_EN;   }
+ 315              else
+ 316            { tmp &= ~CMT2300A_MASK_FIFO_MERGE_EN;  }
+ 317          
+ 318              CMT2300A_WriteReg(CMT2300A_CUS_FIFO_CTL, tmp);
+ 319          }*/
+ 320          
+ 321          /*! ********************************************************
+ 322          * @name    CMT2300A_EnableReadFifo
+ 323          * @desc    Enable SPI to read the FIFO.
+ 324          * *********************************************************/
+ 325          void CMT2300A_EnableReadFifo(void)
+ 326          {
+ 327   1          unsigned char tmp = CMT2300A_ReadReg(CMT2300A_CUS_FIFO_CTL);
+ 328   1          tmp &= ~CMT2300A_MASK_SPI_FIFO_RD_WR_SEL; 
+ 329   1          tmp &= ~CMT2300A_MASK_FIFO_RX_TX_SEL;
+ 330   1          CMT2300A_WriteReg(CMT2300A_CUS_FIFO_CTL, tmp);
+ 331   1      }
+ 332          
+ 333          /*! ********************************************************
+ 334          * @name    CMT2300A_EnableWriteFifo
+ 335          * @desc    Enable SPI to write the FIFO.
+ 336          * *********************************************************/
+ 337          void CMT2300A_EnableWriteFifo(void)
+ 338          {
+ 339   1          unsigned char tmp = CMT2300A_ReadReg(CMT2300A_CUS_FIFO_CTL);
+ 340   1          tmp |= CMT2300A_MASK_SPI_FIFO_RD_WR_SEL;
+ 341   1          tmp |= CMT2300A_MASK_FIFO_RX_TX_SEL;
+ 342   1          CMT2300A_WriteReg(CMT2300A_CUS_FIFO_CTL, tmp);
+ 343   1      }
+ 344          
+ 345          /*! ********************************************************
+ 346          * @name    CMT2300A_RestoreFifo
+ 347          * @desc    Restore the FIFO.
+ 348          * *********************************************************/
+ 349          /*void CMT2300A_RestoreFifo(void)
+ 350          {
+ 351              CMT2300A_WriteReg(CMT2300A_CUS_FIFO_CLR, CMT2300A_MASK_FIFO_RESTORE);
+ 352          }*/
+ 353          
+ 354          /*! ********************************************************
+ 355          * @name    CMT2300A_ClearFifo
+ 356          * @desc    Clear the Tx FIFO.
+ 357          * @return  FIFO flags
+ 358          *            CMT2300A_MASK_RX_FIFO_FULL_FLG |
+ 359          *            CMT2300A_MASK_RX_FIFO_NMTY_FLG |
+ 360          *            CMT2300A_MASK_RX_FIFO_TH_FLG   |
+ 361          *            CMT2300A_MASK_RX_FIFO_OVF_FLG  |
+ 362          *            CMT2300A_MASK_TX_FIFO_FULL_FLG |
+ 363          *            CMT2300A_MASK_TX_FIFO_NMTY_FLG |
+ 364          *            CMT2300A_MASK_TX_FIFO_TH_FLG
+C51 COMPILER V9.01   CMT2300_HAL                                                           07/23/2024 14:43:12 PAGE 7   
+
+ 365          * *********************************************************/
+ 366          unsigned char CMT2300A_ClearTxFifo(void)
+ 367          {
+ 368   1          unsigned char tmp = CMT2300A_ReadReg(CMT2300A_CUS_FIFO_FLAG);
+ 369   1          CMT2300A_WriteReg(CMT2300A_CUS_FIFO_CLR, CMT2300A_MASK_FIFO_CLR_TX);
+ 370   1          return tmp;
+ 371   1      }
+ 372          
+ 373          /*! ********************************************************
+ 374          * @name    CMT2300A_ClearFifo
+ 375          * @desc    Clear the Rx FIFO.
+ 376          * @return  FIFO flags
+ 377          *            CMT2300A_MASK_RX_FIFO_FULL_FLG |
+ 378          *            CMT2300A_MASK_RX_FIFO_NMTY_FLG |
+ 379          *            CMT2300A_MASK_RX_FIFO_TH_FLG   |
+ 380          *            CMT2300A_MASK_RX_FIFO_OVF_FLG  |
+ 381          *            CMT2300A_MASK_TX_FIFO_FULL_FLG |
+ 382          *            CMT2300A_MASK_TX_FIFO_NMTY_FLG |
+ 383          *            CMT2300A_MASK_TX_FIFO_TH_FLG
+ 384          * *********************************************************/
+ 385          unsigned char CMT2300A_ClearRxFifo(void)
+ 386          {
+ 387   1          unsigned char tmp = CMT2300A_ReadReg(CMT2300A_CUS_FIFO_FLAG);
+ 388   1          CMT2300A_WriteReg(CMT2300A_CUS_FIFO_CLR, CMT2300A_MASK_FIFO_CLR_RX);
+ 389   1          return tmp;
+ 390   1      }
+ 391          
+ 392          /*! ********************************************************
+ 393          * @name    CMT2300A_ClearInterruptFlags
+ 394          * @desc    Clear all interrupt flags.
+ 395          * @return  Some interrupt flags
+ 396          *            CMT2300A_MASK_SL_TMO_EN    |
+ 397          *            CMT2300A_MASK_RX_TMO_EN    |
+ 398          *            CMT2300A_MASK_TX_DONE_EN   |
+ 399          *            CMT2300A_MASK_PREAM_OK_FLG |
+ 400          *            CMT2300A_MASK_SYNC_OK_FLG  |
+ 401          *            CMT2300A_MASK_NODE_OK_FLG  |
+ 402          *            CMT2300A_MASK_CRC_OK_FLG   |
+ 403          *            CMT2300A_MASK_PKT_OK_FLG
+ 404          * *********************************************************/
+ 405          unsigned char CMT2300A_ClearInterruptFlags(void)
+ 406          {
+ 407   1          unsigned char nFlag1, nFlag2;
+ 408   1          unsigned char nClr1 = 0;
+ 409   1          unsigned char nClr2 = 0;
+ 410   1          unsigned char nRet  = 0;
+ 411   1          unsigned char nIntPolar;
+ 412   1          
+ 413   1          nIntPolar = CMT2300A_ReadReg(CMT2300A_CUS_INT1_CTL);
+ 414   1          nIntPolar = (nIntPolar & CMT2300A_MASK_INT_POLAR) ?1 :0;
+ 415   1      
+ 416   1          nFlag1 = CMT2300A_ReadReg(CMT2300A_CUS_INT_FLAG);
+ 417   1          nFlag2 = CMT2300A_ReadReg(CMT2300A_CUS_INT_CLR1);
+ 418   1          
+ 419   1          if(nIntPolar) {
+ 420   2              //Interrupt flag active-low
+ 421   2              nFlag1 = ~nFlag1;
+ 422   2              nFlag2 = ~nFlag2;
+ 423   2          }
+ 424   1      
+ 425   1          if(CMT2300A_MASK_LBD_FLG & nFlag1) {
+ 426   2              nClr2 |= CMT2300A_MASK_LBD_CLR;         //Clear LBD_FLG
+C51 COMPILER V9.01   CMT2300_HAL                                                           07/23/2024 14:43:12 PAGE 8   
+
+ 427   2          }
+ 428   1      
+ 429   1          if(CMT2300A_MASK_COL_ERR_FLG & nFlag1) {
+ 430   2              nClr2 |= CMT2300A_MASK_PKT_DONE_CLR;    //Clear COL_ERR_FLG by PKT_DONE_CLR
+ 431   2          }
+ 432   1      
+ 433   1          if(CMT2300A_MASK_PKT_ERR_FLG & nFlag1) {
+ 434   2              nClr2 |= CMT2300A_MASK_PKT_DONE_CLR;    //Clear PKT_ERR_FLG by PKT_DONE_CLR
+ 435   2          }
+ 436   1      
+ 437   1          if(CMT2300A_MASK_PREAM_OK_FLG & nFlag1) {
+ 438   2              nClr2 |= CMT2300A_MASK_PREAM_OK_CLR;    //Clear PREAM_OK_FLG
+ 439   2              nRet  |= CMT2300A_MASK_PREAM_OK_FLG;    //Return PREAM_OK_FLG
+ 440   2          }
+ 441   1      
+ 442   1          if(CMT2300A_MASK_SYNC_OK_FLG & nFlag1) {
+ 443   2              nClr2 |= CMT2300A_MASK_SYNC_OK_CLR;    //Clear SYNC_OK_FLG
+ 444   2              nRet  |= CMT2300A_MASK_SYNC_OK_FLG;    //Return SYNC_OK_FLG
+ 445   2          }
+ 446   1      
+ 447   1          if(CMT2300A_MASK_NODE_OK_FLG & nFlag1) {
+ 448   2              nClr2 |= CMT2300A_MASK_NODE_OK_CLR;    //Clear NODE_OK_FLG
+ 449   2              nRet  |= CMT2300A_MASK_NODE_OK_FLG;    //Return NODE_OK_FLG
+ 450   2          }
+ 451   1      
+ 452   1          if(CMT2300A_MASK_CRC_OK_FLG & nFlag1) {
+ 453   2              nClr2 |= CMT2300A_MASK_CRC_OK_CLR;    //Clear CRC_OK_FLG
+ 454   2              nRet  |= CMT2300A_MASK_CRC_OK_FLG;    //Return CRC_OK_FLG
+ 455   2          }
+ 456   1      
+ 457   1          if(CMT2300A_MASK_PKT_OK_FLG & nFlag1) {
+ 458   2              nClr2 |= CMT2300A_MASK_PKT_DONE_CLR;  //Clear PKT_OK_FLG
+ 459   2              nRet  |= CMT2300A_MASK_PKT_OK_FLG;    //Return PKT_OK_FLG
+ 460   2          }    
+ 461   1      
+ 462   1          if(CMT2300A_MASK_SL_TMO_FLG & nFlag2) {
+ 463   2              nClr1 |= CMT2300A_MASK_SL_TMO_CLR;    //Clear SL_TMO_FLG
+ 464   2              nRet  |= CMT2300A_MASK_SL_TMO_EN;     //Return SL_TMO_FLG by SL_TMO_EN
+ 465   2          }
+ 466   1      
+ 467   1          if(CMT2300A_MASK_RX_TMO_FLG & nFlag2) {
+ 468   2              nClr1 |= CMT2300A_MASK_RX_TMO_CLR;    //Clear RX_TMO_FLG
+ 469   2              nRet  |= CMT2300A_MASK_RX_TMO_EN;     //Return RX_TMO_FLG by RX_TMO_EN
+ 470   2          }
+ 471   1      
+ 472   1          if(CMT2300A_MASK_TX_DONE_FLG & nFlag2) {
+ 473   2              nClr1 |= CMT2300A_MASK_TX_DONE_CLR;   //Clear TX_DONE_FLG
+ 474   2              nRet  |= CMT2300A_MASK_TX_DONE_EN;    //Return TX_DONE_FLG by TX_DONE_EN
+ 475   2          }
+ 476   1          
+ 477   1          CMT2300A_WriteReg(CMT2300A_CUS_INT_CLR1, nClr1);
+ 478   1          CMT2300A_WriteReg(CMT2300A_CUS_INT_CLR2, nClr2);
+ 479   1      
+ 480   1          if(nIntPolar) {
+ 481   2              //Interrupt flag active-low
+ 482   2              nRet = ~nRet;
+ 483   2          }
+ 484   1      
+ 485   1          return nRet;
+ 486   1      }
+ 487          
+ 488          /*! ********************************************************
+C51 COMPILER V9.01   CMT2300_HAL                                                           07/23/2024 14:43:12 PAGE 9   
+
+ 489          * @name    CMT2300A_ConfigTxDin
+ 490          * @desc    Used to select whether to use GPIO1 or GPIO2 or GPIO3
+ 491          *          as DIN in the direct mode. It only takes effect when 
+ 492          *          call CMT2300A_EnableTxDin(TRUE) in the direct mode.
+ 493          * @param   nDinSel
+ 494          *            CMT2300A_TX_DIN_SEL_GPIO1
+ 495          *            CMT2300A_TX_DIN_SEL_GPIO2
+ 496          *            CMT2300A_TX_DIN_SEL_GPIO3
+ 497          * *********************************************************/
+ 498          /*void CMT2300A_ConfigTxDin(unsigned char nDinSel)
+ 499          {
+ 500              unsigned char tmp = CMT2300A_ReadReg(CMT2300A_CUS_FIFO_CTL);
+ 501              tmp &= ~CMT2300A_MASK_TX_DIN_SEL;
+ 502              tmp |= nDinSel;
+ 503              CMT2300A_WriteReg(CMT2300A_CUS_FIFO_CTL, tmp);
+ 504          }*/
+ 505          
+ 506          /*! ********************************************************
+ 507          * @name    CMT2300A_EnableTxDin
+ 508          * @desc    Used to change GPIO1/GPIO2/GPIO3 between DOUT and DIN.
+ 509          * @param   bEnable(TRUE): used as DIN
+ 510          *          bEnable(FALSE): used as DOUT(default)
+ 511          * *********************************************************/
+ 512          /*void CMT2300A_EnableTxDin(unsigned char bEnable)
+ 513          {
+ 514              unsigned char tmp = CMT2300A_ReadReg(CMT2300A_CUS_FIFO_CTL);
+ 515          
+ 516              if(bEnable  != 0)
+ 517            { tmp |= CMT2300A_MASK_TX_DIN_EN;   }
+ 518              else
+ 519            { tmp &= ~CMT2300A_MASK_TX_DIN_EN;  }
+ 520          
+ 521              CMT2300A_WriteReg(CMT2300A_CUS_FIFO_CTL, tmp);
+ 522          }*/
+ 523          
+ 524          /*! ********************************************************
+ 525          * @name    CMT2300A_EnableTxDinInvert
+ 526          * @desc    Used to invert DIN data in direct mode.
+ 527          * @param   bEnable(TRUE): invert DIN
+ 528          *          bEnable(FALSE): not invert DIN(default)
+ 529          * *********************************************************/
+ 530          /*void CMT2300A_EnableTxDinInvert(unsigned char bEnable)
+ 531          {
+ 532              unsigned char tmp = CMT2300A_ReadReg(CMT2300A_CUS_INT2_CTL);
+ 533          
+ 534              if(bEnable != 0)
+ 535            { tmp |= CMT2300A_MASK_TX_DIN_INV;  }
+ 536              else
+ 537            { tmp &= ~CMT2300A_MASK_TX_DIN_INV; }
+ 538          
+ 539              CMT2300A_WriteReg(CMT2300A_CUS_INT2_CTL, tmp);
+ 540          }*/
+ 541          
+ 542          /*! ********************************************************
+ 543          * @name    CMT2300A_IsExist
+ 544          * @desc    Chip indentify.
+ 545          * @return  TRUE: chip is exist, FALSE: chip not found
+ 546          * *********************************************************/
+ 547          /*unsigned char CMT2300A_IsExist(void)
+ 548          {
+ 549              unsigned char back, dat;
+ 550          
+C51 COMPILER V9.01   CMT2300_HAL                                                           07/23/2024 14:43:12 PAGE 10  
+
+ 551              back = CMT2300A_ReadReg(CMT2300A_CUS_PKT17);
+ 552              CMT2300A_WriteReg(CMT2300A_CUS_PKT17, 0xAA);
+ 553          
+ 554              dat = CMT2300A_ReadReg(CMT2300A_CUS_PKT17);
+ 555              CMT2300A_WriteReg(CMT2300A_CUS_PKT17, back);
+ 556          
+ 557              if(0xAA==dat)
+ 558                  return 0x01;
+ 559              else
+ 560                  return 0x00;
+ 561          }*/
+ 562          
+ 563          /*! ********************************************************
+ 564          * @name    CMT2300A_GetRssiCode
+ 565          * @desc    Get RSSI code.
+ 566          * @return  RSSI code
+ 567          * *********************************************************/
+ 568          /*unsigned char CMT2300A_GetRssiCode(void)
+ 569          {
+ 570              return CMT2300A_ReadReg(CMT2300A_CUS_RSSI_CODE);
+ 571          }*/
+ 572          
+ 573          /*! ********************************************************
+ 574          * @name    CMT2300A_GetRssiDBm
+ 575          * @desc    Get RSSI dBm.
+ 576          * @return  dBm
+ 577          * *********************************************************/
+ 578          /*int CMT2300A_GetRssiDBm(void)
+ 579          {
+ 580              return (int)CMT2300A_ReadReg(CMT2300A_CUS_RSSI_DBM) - 128;
+ 581          }*/
+ 582          
+ 583          /*! ********************************************************
+ 584          * @name    CMT2300A_SetFrequencyChannel
+ 585          * @desc    This defines up to 255 frequency channel
+ 586          *          for fast frequency hopping operation.
+ 587          * @param   nChann: the frequency channel
+ 588          * *********************************************************/
+ 589          /*void CMT2300A_SetFrequencyChannel(unsigned char nChann)
+ 590          {
+ 591              CMT2300A_WriteReg(CMT2300A_CUS_FREQ_CHNL, nChann);
+ 592          }*/
+ 593          
+ 594          /*! ********************************************************
+ 595          * @name    CMT2300A_SetFrequencyStep
+ 596          * @desc    This defines the frequency channel step size 
+ 597          *          for fast frequency hopping operation. 
+ 598          *          One step size is 2.5 kHz.
+ 599          * @param   nOffset: the frequency step
+ 600          * *********************************************************/
+ 601          /*void CMT2300A_SetFrequencyStep(unsigned char nOffset)
+ 602          {
+ 603              CMT2300A_WriteReg(CMT2300A_CUS_FREQ_OFS, nOffset);
+ 604          }*/
+ 605          
+ 606          /*! ********************************************************
+ 607          * @name    CMT2300A_SetPayloadLength
+ 608          * @desc    Set payload length.
+ 609          * @param   nLength
+ 610          * *********************************************************/
+ 611          void CMT2300A_SetPayloadLength(unsigned int nLength)
+ 612          { 
+C51 COMPILER V9.01   CMT2300_HAL                                                           07/23/2024 14:43:12 PAGE 11  
+
+ 613   1          unsigned char tmp = CMT2300A_ReadReg(CMT2300A_CUS_PKT14);
+ 614   1          
+ 615   1          tmp &= ~CMT2300A_MASK_PAYLOAD_LENG_10_8;
+ 616   1          tmp |= (nLength >> 4) & CMT2300A_MASK_PAYLOAD_LENG_10_8;
+ 617   1          CMT2300A_WriteReg(CMT2300A_CUS_PKT14, tmp);
+ 618   1          
+ 619   1          tmp = nLength & CMT2300A_MASK_PAYLOAD_LENG_7_0;
+ 620   1          CMT2300A_WriteReg(CMT2300A_CUS_PKT15, tmp);
+ 621   1      }
+ 622          
+ 623          /*! ********************************************************
+ 624          * @name    CMT2300A_EnableLfosc
+ 625          * @desc    If you need use sleep timer, you should enable LFOSC.
+ 626          * @param   bEnable(TRUE): Enable it(default)
+ 627          *          bEnable(FALSE): Disable it
+ 628          * *********************************************************/
+ 629          void CMT2300A_EnableLfosc(unsigned char bEnable)
+ 630          {
+ 631   1          unsigned char tmp = CMT2300A_ReadReg(CMT2300A_CUS_SYS2);
+ 632   1          
+ 633   1          if(bEnable != 0) {
+ 634   2              tmp |= CMT2300A_MASK_LFOSC_RECAL_EN;
+ 635   2              tmp |= CMT2300A_MASK_LFOSC_CAL1_EN;
+ 636   2              tmp |= CMT2300A_MASK_LFOSC_CAL2_EN;
+ 637   2          }
+ 638   1          else {
+ 639   2              tmp &= ~CMT2300A_MASK_LFOSC_RECAL_EN;
+ 640   2              tmp &= ~CMT2300A_MASK_LFOSC_CAL1_EN;
+ 641   2              tmp &= ~CMT2300A_MASK_LFOSC_CAL2_EN;
+ 642   2          }
+ 643   1          
+ 644   1          CMT2300A_WriteReg(CMT2300A_CUS_SYS2, tmp);
+ 645   1      }
+ 646          
+ 647          /*! ********************************************************
+ 648          * @name    CMT2300A_EnableLfoscOutput
+ 649          * @desc    LFOSC clock is output via GPIO3.
+ 650          * @param   bEnable(TRUE): Enable it
+ 651          *          bEnable(FALSE): Disable it(default)
+ 652          * *********************************************************/
+ 653          /*void CMT2300A_EnableLfoscOutput(unsigned char bEnable)
+ 654          {
+ 655              unsigned char tmp = CMT2300A_ReadReg(CMT2300A_CUS_INT2_CTL);
+ 656              
+ 657              if(bEnable != 0)
+ 658            { tmp |= CMT2300A_MASK_LFOSC_OUT_EN;    }
+ 659              else
+ 660            { tmp &= ~CMT2300A_MASK_LFOSC_OUT_EN;   }
+ 661              
+ 662              CMT2300A_WriteReg(CMT2300A_CUS_INT2_CTL, tmp);
+ 663          }*/
+ 664          
+ 665          /*! ********************************************************
+ 666          * @name    CMT2300A_EnableAfc
+ 667          * @desc    AFC enable or disanble.
+ 668          * @param   bEnable(TRUE): Enable it
+ 669          *          bEnable(FALSE): Disable it(default)
+ 670          * *********************************************************/
+ 671          /*void CMT2300A_EnableAfc(unsigned char bEnable)
+ 672          {
+ 673              unsigned char tmp = CMT2300A_ReadReg(CMT2300A_CUS_FSK5);
+ 674          
+C51 COMPILER V9.01   CMT2300_HAL                                                           07/23/2024 14:43:12 PAGE 12  
+
+ 675              if(bEnable != 0)
+ 676            { tmp |= 0x10;  }
+ 677              else
+ 678            { tmp &= ~0x10; }
+ 679          
+ 680              CMT2300A_WriteReg(CMT2300A_CUS_FSK5, tmp);
+ 681          }*/
+ 682          
+ 683          /*! ********************************************************
+ 684          * @name    CMT2300A_SetAfcOvfTh
+ 685          * @desc    This is optional, only needed when using Rx fast frequency hopping.
+ 686          * @param   afcOvfTh: AFC_OVF_TH see AN142 and AN197 for details.
+ 687          * *********************************************************/
+ 688          /*void CMT2300A_SetAfcOvfTh(unsigned char afcOvfTh)
+ 689          {
+ 690              CMT2300A_WriteReg(CMT2300A_CUS_FSK4, afcOvfTh);
+ 691          }*/
+ 692          
+ 693          /*! ********************************************************
+ 694          * @name    CMT2300A_Init
+ 695          * @desc    Initialize chip status.
+ 696          * *********************************************************/
+ 697          void CMT2300A_Init_Reg(void)
+ 698          {unsigned char tmp;
+ 699   1      
+ 700   1          CMT2300A_SoftReset();
+ 701   1          Cmt2300A_Delay_us(2000);
+ 702   1          CMT2300A_GoStby();
+ 703   1      
+ 704   1          tmp  = CMT2300A_ReadReg(CMT2300A_CUS_MODE_STA);
+ 705   1          tmp |= CMT2300A_MASK_CFG_RETAIN;  // Enable CFG_RETAIN
+ 706   1          tmp &= ~CMT2300A_MASK_RSTN_IN_EN; // Disable RSTN_IN
+ 707   1          CMT2300A_WriteReg(CMT2300A_CUS_MODE_STA, tmp);
+ 708   1      
+ 709   1          tmp  = CMT2300A_ReadReg(CMT2300A_CUS_EN_CTL);
+ 710   1          tmp |= CMT2300A_MASK_LOCKING_EN;  // Enable LOCKING_EN
+ 711   1          CMT2300A_WriteReg(CMT2300A_CUS_EN_CTL, tmp);
+ 712   1      
+ 713   1          CMT2300A_EnableLfosc(0);// Diable LFOSC
+ 714   1          CMT2300A_ClearInterruptFlags();
+ 715   1      }
+ 716          
+ 717          /*! ********************************************************
+ 718          * @name    CMT2300A_ConfigRegBank
+ 719          * @desc    Config one register bank.
+ 720          * *********************************************************/
+ 721          void CMT2300A_ConfigRegBank(unsigned char code *base_addr, unsigned char len)
+ 722          {unsigned char i,ConfigArray[2];
+ 723   1      
+ 724   1          for(i=0; i<len; i++)
+ 725   1        { ConfigArray[0] = *base_addr++;
+ 726   2          ConfigArray[1] = *base_addr++;
+ 727   2          CMT2300A_WriteReg(ConfigArray[0],ConfigArray[1]);
+ 728   2        }
+ 729   1      }
+ 730          
+ 731          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    995    ----
+   CONSTANT SIZE    =   ----    ----
+C51 COMPILER V9.01   CMT2300_HAL                                                           07/23/2024 14:43:12 PAGE 13  
+
+   XDATA SIZE       =   ----      30
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

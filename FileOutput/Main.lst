@@ -1,0 +1,344 @@
+C51 COMPILER V9.01   MAIN                                                                  07/25/2024 08:55:30 PAGE 1   
+
+
+C51 COMPILER V9.01, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\FileOutput\Main.obj
+COMPILER INVOKED BY: D:\software\keil\C51\BIN\C51.EXE SourceFile\Main.C LARGE OMF2 OPTIMIZE(8,SPEED) BROWSE INCDIR(.\Con
+                    -figFile;.\CMT2300A) DEBUG PRINT(.\FileOutput\Main.lst) TABS(2) OBJECT(.\FileOutput\Main.obj)
+
+line level    source
+
+   1          //-----------------------------------------------------------------------------
+   2          //功能说明：单片机直接驱动液晶程序
+   3          //创建日期：
+   4          //-----------------------------------------------------------------------------
+   5          #ifndef _MAIN_C_
+   6          #define _MAIN_C_
+   7          #endif
+   8          //-----------------------------------------------------------------------------
+   9          #include <intrins.h>
+  10          #include "ca51f_config.h"
+  11          #include "ca51f2sfr.h"
+  12          #include "ca51f2xsfr.h"
+  13          #include "gpiodef_f2.h"
+  14          #include "system.h"
+  15          
+  16          #include "pwm.h"
+  17          #include "flash.h"
+  18          #include "WT588Fxx.h"
+  19          //-----------------------------------------------------------------------------
+  20          #include "LCD_DRIVER.H"
+  21          #include "Timer0_ISR.H"
+  22          #include "UART2_ISR.h"
+  23          
+  24          #include "RTC_DRVIER.H"
+  25          #include "HP_03N_DRV.H"
+  26          
+  27          #ifdef Enable_CMT2300 //打开双向遥控
+  28            #include "Radio.H"
+  29          #endif
+  30          
+  31          #include "DisplayUpdata.H"
+  32          #include "KeyEvent.H"
+  33          
+  34          #include "RF_Receiver.H"
+  35          //-----------------------------------------------------------------------------
+  36          xdata unsigned char Timer_0_Count;
+  37          
+  38          //-----------------------------------------------------------------------------
+  39          #pragma optimize(0)
+  40          void Delay_100us(unsigned int Loop)
+  41          {unsigned char Count;
+  42   1        do
+  43   1        { Count = 120;
+  44   2          while (--Count);
+  45   2        }while (--Loop);
+  46   1      }
+  47          //-----------------------------------------------------------------------------
+  48          void System_Clock_Setup(void)
+  49          {
+  50   1        EA = 0;//关总中断
+  51   1      
+  52   1        CKCON |= IHCKE; //打开IRCH时钟
+  53   1      
+  54   1        while(!(CKCON & XLSTA)); //等待XOSCL时钟稳定
+C51 COMPILER V9.01   MAIN                                                                  07/25/2024 08:55:30 PAGE 2   
+
+  55   1        RCTAGH = ((4000000 *400)/32768)/256; //设置目标频率
+  56   1        RCTAGL = ((4000000 *400)/32768)%256;
+  57   1      
+  58   1        VCKDH = 400/256; //设置参考时钟分频，分频后的频率为81.92HZ
+  59   1        VCKDL = 400%256;
+  60   1        RCCON = MODE(3) | MSEX(0) | CKSS(0); //设置目标时钟为IRCH，参考时钟为XOSCL，设置校正方式， //启动校正模式
+  61   1        while(RCCON&0xC0); //等待校正完成
+  62   1      
+  63   1        CKSEL = (CKSEL &0xF8) | CK_IRCH;//选择 ICRH 时钟
+  64   1      
+  65   1        PLLCON = PLLON(1) | MULFT(1);//打开PLL并设置 3倍频
+  66   1        while(!(PLLCON & PLSTA)); //等待PLL时钟稳定
+  67   1        CKSEL = (CKSEL&0xF8) | CK_PLL; //设置时钟为PLL
+  68   1      
+  69   1      }
+  70          
+  71          //-----------------------------------------------------------------------------
+  72          void BackLightControl(void)
+  73          { //----- DivDat  周期 -- DutyDat 占空比 --
+  74   1          PWM_CfgDivDuty(PWM_CH6, PWM_DivDat, PWM_DutyDat);
+  75   1          //------------------------------------------------
+  76   1          PWM_Update((1 << PWM_CH6));
+  77   1          WaitPWMUpdateComplete();
+  78   1        //------------------------------------------------
+  79   1          PWM_CfgDivDuty(PWM_CH7, PWM_DivDat, PWM_DutyDat);
+  80   1          //------------------------------------------------
+  81   1          PWM_Update((1 << PWM_CH7));
+  82   1          WaitPWMUpdateComplete();
+  83   1      //  
+  84   1          PWM_EnContrl((1 << PWM_CH6) |(1 << PWM_CH7));//开启 PWM
+  85   1      }
+  86          //-----------------------------------------------------------------------------
+  87          void PWM_ControlInitial(void)
+  88          { PWM_DivDat = 1800;//周期
+  89   1        PWM_DutyDat = 200;//占空比
+  90   1        BackLightTime = 500;//设置背光高亮时间
+  91   1        //------------------------------------------------
+  92   1        PWM_InterruptCfg(PWM_CH6,TIE_Off,ZIE_Off,PIE_Off,NIE_Off,0);//PWM 中断关闭
+  93   1        PWM_InterruptCfg(PWM_CH7, TIE_Off, ZIE_Off, PIE_Off, NIE_Off, 0);//PWM 中断关闭
+  94   1      #if   (SYSCLK_SRC == CK_IRCH)//IRCH
+                  PWM_init(PWM_CH6, Edge_Align, CKS_IH, Toggle_Off, 0, 0);
+                  PWM_init(PWM_CH7, Edge_Align, CKS_IH, 0, 0, Complementary_Off);
+              
+              #else
+  99   1          PWM_init(PWM_CH6, Edge_Align, CKS_PLL, Toggle_Off, 0, 0);
+ 100   1          PWM_init(PWM_CH7, Edge_Align, CKS_PLL, 0, 0, Complementary_Off);
+ 101   1      #endif
+ 102   1        //------------------------------------------------
+ 103   1        BackLightControl();//调节背光亮度
+ 104   1      }
+ 105          //-----------------------------------------------------------------------------
+ 106          //#pragma optimize(0)
+ 107          void SystemTimeUpdate(void)
+ 108          { if(InterruptCount >=20)//50mS中断
+ 109   1        { InterruptCount = 0x00;
+ 110   2          //---------------------------------------
+ 111   2              if(++OneSecondTime >20)//秒计时
+ 112   2              {   OneSecondTime = 0x00;
+ 113   3            if((DisplayStateIndex == 0)&&(DisplaySetIndex == 0))
+ 114   3            { RTC_TimeRead();   }//获取时钟
+ 115   3            //-----------------------------------
+ 116   3            if(ExitSetupTime >0x00)//退出设置状态计时
+C51 COMPILER V9.01   MAIN                                                                  07/25/2024 08:55:30 PAGE 3   
+
+ 117   3            { if(--ExitSetupTime ==0)
+ 118   4              {   DisplaySetIndex = 0x09;
+ 119   5                DisplayStateIndex = 0x00;
+ 120   5              }//退出设置菜单
+ 121   4            }
+ 122   3          //---------------------------------------
+ 123   3            if(AudioData.AudioPlayCount >0)
+ 124   3            { AudioData.AudioPlayCount--;   }
+ 125   3          //---------------------------------------
+ 126   3            if(UART_ERROR_Time >0x00)
+ 127   3            { UART_ERROR_Time--;
+ 128   4              if(ErrorIndex == 0x08)
+ 129   4              { ErrorIndex = 0x00;  }
+ 130   4            }
+ 131   3            else
+ 132   3            { ErrorIndex = 0x08;    }
+ 133   3          //---------------------------------------
+ 134   3          }
+ 135   2          //---------------------------------------
+ 136   2          if(++HP20X_ReadTime > 10)//500mS转换一次
+ 137   2          { HP20X_ReadTime = 0x00;    }
+ 138   2          //---------------------------------------
+ 139   2          if(++FlashDisplayTime >20)//控制显示0.5秒闪
+ 140   2          { FlashDisplayTime = 0x00;
+ 141   3            if(RF_LearnAddrssTime > 0x00)//在5S学习时间内
+ 142   3            { RF_LearnAddrssTime--;   }
+ 143   3          #ifdef Enable_CMT2300 //打开双向遥控
+ 144   3            if(CMT2300_PairingTime > 0x00)//在5S学习时间内
+ 145   3            { CMT2300_PairingTime--;    }
+ 146   3          #endif
+ 147   3          }
+ 148   2          //---------------------------------------
+ 149   2          if(SystemStateTime > 0x00)
+ 150   2          { SystemStateTime--;      }
+ 151   2              //----------------------------------
+ 152   2          if(DataChangeUpdataTime >0)   //调试
+ 153   2          { 
+ 154   3            if(--DataChangeUpdataTime ==0)
+ 155   3            { Data_Area_ReadWrite(WRITE_DATA,0,&Config.Data[0],ROM_DATA_1_LENGHT);
+ 156   4            }//参数被更改，重新回存
+ 157   3          }
+ 158   2          //---------------------------------------
+ 159   2              if(BackLightTime >0)
+ 160   2              { if(--BackLightTime ==0x00)
+ 161   3            { PWM_DutyDat = (PWM_DivDat -(((unsigned long)PWM_DivDat *20)/100));  }//占空比20%
+ 162   3            else
+ 163   3            { PWM_DutyDat = (PWM_DivDat -(((unsigned long)PWM_DivDat *90)/100));  }//占空比90%
+ 164   3            BackLightControl();//调节背光亮度
+ 165   3              }
+ 166   2      //-----------------------------------------------------------------------------
+ 167   2          if(OutHoldTime > 0x00)
+ 168   2          { OutHoldTime--;      }
+ 169   2          else
+ 170   2          { RF_KEY_Hold[0] = 0x00;
+ 171   3            RF_KEY_Hold[1] = 0x00;
+ 172   3          }
+ 173   2              //----------------------------------
+ 174   2        #ifdef Enable_CMT2300 //打开双向遥控
+ 175   2          if(g_nTx_RxTimeout >0)//射频发送超时时间
+ 176   2          { g_nTx_RxTimeout--;    }
+ 177   2        #endif
+ 178   2        }
+C51 COMPILER V9.01   MAIN                                                                  07/25/2024 08:55:30 PAGE 4   
+
+ 179   1      }
+ 180          //-----------------------------------------------------------------------------
+ 181          void ResetVolatgeSet(void)
+ 182          {
+ 183   1        LVDCON = 0xC9;//设置低电压复位门限为 3.6V
+ 184   1      //  LVDCON = 0xCA;//设置低电压复位门限为 3.8V
+ 185   1      //  LVDCON = 0xCB;//设置低电压复位门限为 4.0V
+ 186   1      //  LVDCON = 0xCC;//设置低电压复位门限为 4.2V
+ 187   1      //  LVDCON = 0xCD;//设置低电压复位门限为 4.4V
+ 188   1      }
+ 189          void LDO_PowerSetup(void)
+ 190          {
+ 191   1      //  PWCON = (PWCON &0xF0) |0x0F;//设置LDO 为高功率模式--1.73V
+ 192   1        PWCON = (PWCON &0xF0) |0x0E;//设置LDO 为高功率模式--1.67V
+ 193   1      //  PWCON = (PWCON &0xF0) |0x0D;//设置LDO 为高功率模式--1.61V
+ 194   1      //  PWCON = (PWCON &0xF0) |0x0C;//设置LDO 为高功率模式--1.55V
+ 195   1      }
+ 196          //-----------------------------------------------------------------------------
+ 197          
+ 198          
+ 199          
+ 200          void PowerOn_Initial(void)
+ 201          { P0 = 0x00;
+ 202   1        GPIO_Init(P04F,OUTPUT );//WT588_DAT
+ 203   1        GPIO_Init(P05F,INPUT);//WT588_BUSY
+ 204   1        GPIO_Init(P06F,OUTPUT );//WT588_CLK
+ 205   1      //-------------------------------------
+ 206   1        P1 = 0x00;
+ 207   1        P2 = 0x00;
+ 208   1      //-------------------------------------
+ 209   1        P3 = 0xFF;
+ 210   1        GPIO_Init(P32F,P32_PWM7_SETTING);
+ 211   1        GPIO_Init(P33F,P33_PWM6_SETTING);
+ 212   1      
+ 213   1        GPIO_Init(P34F,OUTPUT |PD_EN);
+ 214   1        GPIO_Init(P34C,General_IO);
+ 215   1      //-------------------------------------
+ 216   1        P4 = 0xF7;
+ 217   1        
+ 218   1        GPIO_Init(P43F,INPUT );
+ 219   1        GPIO_Init(P44F,OUTPUT );
+ 220   1        GPIO_Init(P45F,OUTPUT |OP_EN);
+ 221   1        GPIO_Init(P46F,OUTPUT |OP_EN);
+ 222   1        GPIO_Init(P47F,OUTPUT |OP_EN);
+ 223   1      //-------------------------------------
+ 224   1        P5 = 0xFF;
+ 225   1        GPIO_Init(P50F,INPUT |PU_EN);
+ 226   1        GPIO_Init(P51F,INPUT |PU_EN);
+ 227   1        GPIO_Init(P52F,INPUT |PU_EN);
+ 228   1        GPIO_Init(P53F,INPUT |PU_EN);
+ 229   1        GPIO_Init(P54F,INPUT |PU_EN);//按键输入
+ 230   1      
+ 231   1        GPIO_Init(P50C,General_IO);
+ 232   1        GPIO_Init(P51C,General_IO);
+ 233   1        GPIO_Init(P52C,General_IO);
+ 234   1        GPIO_Init(P53C,General_IO);
+ 235   1        GPIO_Init(P54C,General_IO);
+ 236   1      //-------------------------------------
+ 237   1        P6 = 0xC0;
+ 238   1        GPIO_Init(P60F,INPUT |PU_EN);
+ 239   1        GPIO_Init(P61F,OUTPUT |PU_EN);
+ 240   1        GPIO_Init(P62F,OUTPUT |PU_EN);//RXD 上拉
+C51 COMPILER V9.01   MAIN                                                                  07/25/2024 08:55:30 PAGE 5   
+
+ 241   1        
+ 242   1      //-------------------------------------
+ 243   1        P7 = 0xFF;//注意P71,P72,P73,P74 -- 外部时钟端口 
+ 244   1      //  GPIO_Init(P75F,OUTPUT);
+ 245   1      //-------------------------------------
+ 246   1        System.DATA = 0x00;//清除所有按键
+ 247   1        SystemRunState = TASK_IdleMode;
+ 248   1        DataChangeUpdataTime = 0x00;
+ 249   1        OilpumpEnableState = 0xAA;//允许泵油条件
+ 250   1      
+ 251   1      }
+ 252          //-----------------------------------------------------------------------------
+ 253          void main(void)
+ 254          { Delay_100us(800);
+ 255   1        ResetVolatgeSet();
+ 256   1        LDO_PowerSetup();
+ 257   1        PowerOn_Initial();
+ 258   1        RTC_InitialSet();//时间模块初始化
+ 259   1        Delay_100us(350);
+ 260   1        System_Clock_Setup();//设置倍频时钟
+ 261   1        Delay_100us(200);
+ 262   1        //-----------------------------------------------------
+ 263   1        WT588F_Play_Initial();
+ 264   1        LCD_PORT_Initial();
+ 265   1        PWM_ControlInitial();
+ 266   1        Uart2_Initial(7500);
+ 267   1        Timer0_Initial();
+ 268   1        HP20X_Initial();//初始化传感器
+ 269   1        //-----------------------------------------------------
+ 270   1        DisplayDataInitial();//准备初始状态
+ 271   1        RunData_Initial();//准备所有运行数据
+ 272   1      //-----------------------------------------------------
+ 273   1        RF_Receiver_Initial();
+ 274   1      #ifdef Enable_CMT2300 //打开双向遥控
+ 275   1        CMT2300_SetInitial();//2300A 初始化
+ 276   1      #endif
+ 277   1        //-----------------------------------------------------
+ 278   1        EA = 1;//开总中断
+ 279   1        //-----------------------------------------------------
+ 280   1        Delay_100us(1800);
+ 281   1      #if   (LanguageType == Multilingual)  //多种语言
+                WT588F_Play_Index(0x01);//开机提示
+              #elif (LanguageType == Chinese) //单独中文语音
+                WT588F_Play_Index(61);//开机提示
+              #endif
+ 286   1        WT588F_AutoPlay_Audio();
+ 287   1        //-----------------------------------------------------
+ 288   1        while(1)
+ 289   1        { SystemTimeUpdate();
+ 290   2          WirelessDecode();
+ 291   2          KeyEventProcess();//处理按键
+ 292   2          
+ 293   2          WT588F_AutoPlay_Audio();
+ 294   2          HP20X_DataProcess();
+ 295   2          DisplayDataProcess();
+ 296   2          LCD_DisplayUpdate();//刷新显示
+ 297   2          //=================================================
+ 298   2          UART2_DataProcess();
+ 299   2          UART2_DataTransmit();//下发数据
+ 300   2          //=================================================
+ 301   2        #ifdef Enable_CMT2300 //打开双向遥控
+ 302   2          RunStateControl();
+C51 COMPILER V9.01   MAIN                                                                  07/25/2024 08:55:30 PAGE 6   
+
+ 303   2          CMT2300A_RF_Process();
+ 304   2        #endif
+ 305   2        }
+ 306   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1122    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =      4    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
